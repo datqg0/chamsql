@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  devcontainer:
+    image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ../..:/workspace/templateUI:cached
+      - /workspace/templateUI/client/node_modules
+      - pnpm-store:/workspace/templateUI/client/.pnpm_store
+    command: sleep infinity
+    networks:
+      - devnet
+
+volumes:
+  pnpm-store:
+
+networks:
+  devnet:
+    name: templateui_devnet
+    driver: bridge
+    external: true

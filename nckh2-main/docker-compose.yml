@@ -1,0 +1,197 @@
+services:
+  # =============================================
+  # SYSTEM DATABASE (Main PostgreSQL)
+  # =============================================
+  sqlexam.postgres:
+    image: postgres:16-alpine
+    container_name: sqlexam.postgres
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres123}
+      POSTGRES_DB: ${DATABASE_NAME:-sql_exam_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sqlexam_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sql_exam_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =============================================
+  # SANDBOX DATABASES (Query Execution)
+  # =============================================
+
+  # PostgreSQL Sandbox
+  sqlexam.postgres.sandbox:
+    image: postgres:16-alpine
+    container_name: sqlexam.postgres.sandbox
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: sandbox_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - sqlexam_postgres_sandbox_data:/var/lib/postgresql/data
+      - ./sandbox/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sandbox_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MySQL Sandbox
+  sqlexam.mysql.sandbox:
+    image: mysql:8.0
+    container_name: sqlexam.mysql.sandbox
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql123
+      MYSQL_DATABASE: sandbox_db
+      MYSQL_USER: sandbox_user
+      MYSQL_PASSWORD: sandbox123
+    ports:
+      - "3307:3306"
+    volumes:
+      - sqlexam_mysql_sandbox_data:/var/lib/mysql
+      - ./sandbox/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-pmysql123",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # SQL Server Sandbox
+  sqlexam.sqlserver.sandbox:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlexam.sqlserver.sandbox
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "SqlServer123!"
+      MSSQL_PID: "Express"
+    ports:
+      - "1434:1433"
+    volumes:
+      - sqlexam_sqlserver_sandbox_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "SqlServer123!" -Q "SELECT 1" || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # =============================================
+  # SUPPORT SERVICES
+  # =============================================
+
+  # Redis Cache
+  sqlexam.redis:
+    image: redis:7-alpine
+    container_name: sqlexam.redis
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:-redis123}",
+      ]
+    ports:
+      - "6379:6379"
+    volumes:
+      - sqlexam_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # RabbitMQ Message Broker (for future async processing)
+  sqlexam.rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: sqlexam.rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - sqlexam_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # MinIO Object Storage (for file uploads)
+  sqlexam.minio:
+    image: minio/minio:latest
+    container_name: sqlexam.minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - sqlexam_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # PGAdmin for Database Management
+  sqlexam.pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sqlexam.pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sqlexam.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_LISTEN_PORT: 5050
+    ports:
+      - "5050:5050"
+    volumes:
+      - sqlexam_pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - sqlexam.postgres
+      - sqlexam.postgres.sandbox
+    restart: unless-stopped
+
+volumes:
+  sqlexam_postgres_data:
+    name: sqlexam_postgres_data
+  sqlexam_postgres_sandbox_data:
+    name: sqlexam_postgres_sandbox_data
+  sqlexam_mysql_sandbox_data:
+    name: sqlexam_mysql_sandbox_data
+  sqlexam_sqlserver_sandbox_data:
+    name: sqlexam_sqlserver_sandbox_data
+  sqlexam_redis_data:
+    name: sqlexam_redis_data
+  sqlexam_rabbitmq_data:
+    name: sqlexam_rabbitmq_data
+  sqlexam_minio_data:
+    name: sqlexam_minio_data
+  sqlexam_pgadmin_data:
+    name: sqlexam_pgadmin_data
