@@ -312,7 +312,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                             name="supportedDatabases"
                             render={() => (
                                 <FormItem>
-                                    <FormLabel>Databases hỗ trợ <span className="text-destructive">*</span></FormLabel>
+                                    <FormLabel>Database hỗ trợ <span className="text-destructive">*</span></FormLabel>
                                     <div className="flex gap-4">
                                         {databases.map((db) => (
                                             <FormField
@@ -361,7 +361,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                                             />
                                         </FormControl>
                                         <FormLabel className="font-normal cursor-pointer">
-                                            Thứ tự kết quả quan trọng
+                                            xếp theo thứ tự kết quả
                                         </FormLabel>
                                     </FormItem>
                                 )}

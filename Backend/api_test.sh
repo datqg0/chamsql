@@ -31,7 +31,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 # TOPICS ENDPOINTS
 # =============================================
 
-# 3. List Topics (public)
+# 3. List Topics (public) 
 curl -X GET http://localhost:8080/api/v1/topics
 
 # 4. Get Topic by Slug (public)
@@ -53,16 +53,16 @@ curl -X POST http://localhost:8080/api/v1/topics \
 # PROBLEMS ENDPOINTS
 # =============================================
 
-# 6. List Problems (public)
+# 6. List Problems (public) // danh sách bài
 curl -X GET "http://localhost:8080/api/v1/problems?page=1&pageSize=10"
 
-# 7. List Problems by Difficulty
+# 7. List Problems by Difficulty // độ khó
 curl -X GET "http://localhost:8080/api/v1/problems?difficulty=easy"
 
-# 8. Get Problem by Slug (public)
+# 8. Get Problem by Slug (public) // bài cụ thể
 curl -X GET http://localhost:8080/api/v1/problems/simple-select
 
-# 9. Create Problem (lecturer/admin only)
+# 9. Create Problem (lecturer/admin only) // tạo bài
 curl -X POST http://localhost:8080/api/v1/problems \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
@@ -203,7 +203,7 @@ curl -X POST http://localhost:8080/api/v1/admin/users/import \
     ]
   }'
 
-# 24. Update User Role
+# 24. Update User Role up
 curl -X PUT http://localhost:8080/api/v1/admin/users/2/role \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \

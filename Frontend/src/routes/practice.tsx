@@ -534,9 +534,10 @@ function PracticePage() {
                                                         <span className="font-medium">{problem.title}</span>
                                                         {getDifficultyBadge(problem.difficulty)}
                                                     </div>
-                                                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                                        {problem.description}
-                                                    </p>
+                                                    <div
+                                                        className="text-sm text-muted-foreground mt-1 line-clamp-2"
+                                                        dangerouslySetInnerHTML={{ __html: problem.description }}
+                                                    />
                                                 </div>
                                             </div>
                                         ))}
