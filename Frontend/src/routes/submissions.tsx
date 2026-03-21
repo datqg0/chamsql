@@ -1,29 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
-import toast from 'react-hot-toast'
-
-import { SQLEditor } from '@/components/editor/sql-editor'
-import { MainLayout } from '@/components/layouts/main-layout'
-import { ExamImportDialog } from '@/components/exam/exam-import-dialog'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-    ResizablePanelGroup,
-    ResizablePanel,
-    ResizableHandle,
-} from '@/components/ui/resizable'
-import { useWebSocket } from '@/hooks/use-websocket'
-import { useSQLChecker } from '@/hooks/use-sql-checker'
-import { useAuthStore } from '@/stores/use-auth-store'
-import { examsService } from '@/services/exams.service'
-import { submissionsService } from '@/services/submissions.service'
-import type { MyExam, Exam, Submission } from '@/types/exam.types'
 import {
     Play,
     Send,
@@ -40,7 +16,31 @@ import {
     Trophy,
     AlertCircle,
 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
+import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
+import remarkGfm from 'remark-gfm'
+
+import { SQLEditor } from '@/components/editor/sql-editor'
+import { ExamImportDialog } from '@/components/exam/exam-import-dialog'
+import { MainLayout } from '@/components/layouts/main-layout'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+    ResizablePanelGroup,
+    ResizablePanel,
+    ResizableHandle,
+} from '@/components/ui/resizable'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useSQLChecker } from '@/hooks/use-sql-checker'
+import { useWebSocket } from '@/hooks/use-websocket'
 import { cn } from '@/lib/utils'
+import { examsService } from '@/services/exams.service'
+import { submissionsService } from '@/services/submissions.service'
+import { useAuthStore } from '@/stores/use-auth-store'
+import type { MyExam, Exam, Submission } from '@/types/exam.types'
 
 function SubmissionsPage() {
     const navigate = useNavigate()
@@ -172,11 +172,6 @@ function SubmissionsPage() {
         } catch (error: any) {
             toast.error(error?.message || 'Không thể bắt đầu bài thi')
         }
-    }
-
-    const handleViewResult = (myExam: MyExam) => {
-        setSelectedExam(myExam)
-        setExamProblems(myExam.exam.problems || [])
     }
 
     const handleBackToList = () => {

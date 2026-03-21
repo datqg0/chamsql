@@ -14,8 +14,8 @@ import (
 
 func Routes(r *gin.RouterGroup, database *db.Database, cfg *configs.Config, cache redis.IRedis, jwtProv jwt.JWTProvider) {
 	repo := repository.NewAuthRepository(database)
-	uc := usecase.NewAuthUseCase(repo, jwtProv, cache, cfg)
-	handler := NewAuthHandler(uc)
+	authUseCase := usecase.NewAuthUseCase(repo, jwtProv, cache, database, cfg)
+	handler := NewAuthHandler(authUseCase)
 
 	auth := r.Group("/auth")
 	{

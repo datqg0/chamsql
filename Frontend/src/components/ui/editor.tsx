@@ -1,18 +1,18 @@
+import Underline from '@tiptap/extension-underline'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Underline from '@tiptap/extension-underline'
 import { Bold, Italic, Underline as UnderlineIcon, List, ListOrdered, Heading1, Heading2, Quote, Undo, Redo } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 interface EditorProps {
     value?: string
     onChange?: (content: string) => void
-    placeholder?: string
     className?: string
 }
 
-export function Editor({ value, onChange, placeholder, className }: EditorProps) {
+export function Editor({ value, onChange, className }: EditorProps) {
     const editor = useEditor({
         extensions: [
             StarterKit,

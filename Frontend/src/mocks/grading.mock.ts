@@ -18,6 +18,15 @@ export interface Submission {
     expectedOutput?: any[]
     actualOutput?: any[]
     isCorrect?: boolean
+    totalTests?: number
+    passedTests?: number
+    testResults?: {
+        name: string
+        status: 'accepted' | 'wrong_answer' | 'runtime_error'
+        score: number
+        weight: number
+        errorMessage?: string
+    }[]
 }
 
 export interface Exercise {
@@ -102,6 +111,13 @@ export const MOCK_SUBMISSIONS: Submission[] = [
         executionTime: '0.012s',
         isCorrect: true,
         feedback: 'Chính xác! Câu truy vấn đúng hoàn toàn.',
+        totalTests: 3,
+        passedTests: 3,
+        testResults: [
+            { name: 'Sample 1', status: 'accepted', score: 3.33, weight: 1 },
+            { name: 'Hidden 1', status: 'accepted', score: 3.33, weight: 1 },
+            { name: 'Hidden 2', status: 'accepted', score: 3.34, weight: 1 },
+        ],
         expectedOutput: [
             { id: 1, name: 'User 1', email: 'user1@test.com' },
             { id: 2, name: 'User 2', email: 'user2@test.com' },
@@ -325,7 +341,7 @@ export function mockAutoGrade(submissionId: number): Promise<{
                 // NOTE: This is a MOCK simulation. In real application, the backend runs the query.
 
                 // 1. Get the Exercise to check expected output (In real app, backend retrieves this)
-                const exercise = MOCK_EXERCISES.find(e => e.id === submission.exerciseId);
+                // const exercise = MOCK_EXERCISES.find(e => e.id === submission.exerciseId);
 
                 // 2. Simulate "Running" the student query
                 // For mock purposes, we'll assume:
@@ -335,7 +351,7 @@ export function mockAutoGrade(submissionId: number): Promise<{
                 // Mock execution result
                 let actualOutput: any[] = [];
                 let expectedOutput: any[] = [];
-                let executionTime = (Math.random() * 0.1).toFixed(3) + 's';
+                const executionTime = (Math.random() * 0.1).toFixed(3) + 's';
 
                 // Hardcoded expectation logic for demonstration based on Exercise ID
                 if (submission.exerciseId === 1) { // SELECT * FROM users

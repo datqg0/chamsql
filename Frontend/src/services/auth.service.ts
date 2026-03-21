@@ -9,7 +9,7 @@ import { API_ENDPOINTS } from './api/endpoints'
 
 export const authService = {
     async login(dto: LoginDto): Promise<AuthResponse> {
-        const { data } = await api.post<AuthResponse>(
+        const { data } = await api.post<any>(
             API_ENDPOINTS.auth.login,
             dto
         )
@@ -17,7 +17,7 @@ export const authService = {
     },
 
     async register(dto: RegisterDto): Promise<AuthResponse> {
-        const { data } = await api.post<AuthResponse>(
+        const { data } = await api.post<any>(
             API_ENDPOINTS.auth.register,
             dto
         )

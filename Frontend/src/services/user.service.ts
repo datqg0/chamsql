@@ -61,9 +61,15 @@ export const userService = {
         )
         return data
     },
+
+    async updateUser(userId: number, data: Partial<ImportUserDto>): Promise<{ success: boolean; message: string }> {
+        const { data: res } = await api.put<{ success: boolean; message: string }>(
+            `/admin/users/${userId}`,
+            data
+        )
+        return res
+    },
 }
 
 // Re-export User type for convenience
 export type { User }
-
-

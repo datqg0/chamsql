@@ -39,7 +39,7 @@ INSERT INTO submissions (
     execution_time_ms, expected_output, actual_output, error_message, is_correct
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at
+RETURNING id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases
 `
 
 type CreateSubmissionParams struct {
@@ -82,12 +82,15 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		&i.ErrorMessage,
 		&i.IsCorrect,
 		&i.SubmittedAt,
+		&i.Score,
+		&i.TotalTestCases,
+		&i.PassedTestCases,
 	)
 	return i, err
 }
 
 const getLatestSubmission = `-- name: GetLatestSubmission :one
-SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at FROM submissions
+SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases FROM submissions
 WHERE user_id = $1 AND problem_id = $2
 ORDER BY submitted_at DESC
 LIMIT 1
@@ -114,12 +117,15 @@ func (q *Queries) GetLatestSubmission(ctx context.Context, arg GetLatestSubmissi
 		&i.ErrorMessage,
 		&i.IsCorrect,
 		&i.SubmittedAt,
+		&i.Score,
+		&i.TotalTestCases,
+		&i.PassedTestCases,
 	)
 	return i, err
 }
 
 const getSubmissionByID = `-- name: GetSubmissionByID :one
-SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, p.title as problem_title, p.slug as problem_slug
+SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, s.score, s.total_test_cases, s.passed_test_cases, p.title as problem_title, p.slug as problem_slug
 FROM submissions s
 JOIN problems p ON p.id = s.problem_id
 WHERE s.id = $1
@@ -138,6 +144,9 @@ type GetSubmissionByIDRow struct {
 	ErrorMessage    *string            `json:"errorMessage"`
 	IsCorrect       *bool              `json:"isCorrect"`
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	Score           pgtype.Numeric     `json:"score"`
+	TotalTestCases  *int32             `json:"totalTestCases"`
+	PassedTestCases *int32             `json:"passedTestCases"`
 	ProblemTitle    string             `json:"problemTitle"`
 	ProblemSlug     string             `json:"problemSlug"`
 }
@@ -158,6 +167,9 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id int64) (GetSubmissio
 		&i.ErrorMessage,
 		&i.IsCorrect,
 		&i.SubmittedAt,
+		&i.Score,
+		&i.TotalTestCases,
+		&i.PassedTestCases,
 		&i.ProblemTitle,
 		&i.ProblemSlug,
 	)
@@ -165,7 +177,7 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id int64) (GetSubmissio
 }
 
 const listUserSubmissions = `-- name: ListUserSubmissions :many
-SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, p.title as problem_title, p.slug as problem_slug
+SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, s.score, s.total_test_cases, s.passed_test_cases, p.title as problem_title, p.slug as problem_slug
 FROM submissions s
 JOIN problems p ON p.id = s.problem_id
 WHERE s.user_id = $1
@@ -192,6 +204,9 @@ type ListUserSubmissionsRow struct {
 	ErrorMessage    *string            `json:"errorMessage"`
 	IsCorrect       *bool              `json:"isCorrect"`
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	Score           pgtype.Numeric     `json:"score"`
+	TotalTestCases  *int32             `json:"totalTestCases"`
+	PassedTestCases *int32             `json:"passedTestCases"`
 	ProblemTitle    string             `json:"problemTitle"`
 	ProblemSlug     string             `json:"problemSlug"`
 }
@@ -218,6 +233,9 @@ func (q *Queries) ListUserSubmissions(ctx context.Context, arg ListUserSubmissio
 			&i.ErrorMessage,
 			&i.IsCorrect,
 			&i.SubmittedAt,
+			&i.Score,
+			&i.TotalTestCases,
+			&i.PassedTestCases,
 			&i.ProblemTitle,
 			&i.ProblemSlug,
 		); err != nil {
@@ -232,7 +250,7 @@ func (q *Queries) ListUserSubmissions(ctx context.Context, arg ListUserSubmissio
 }
 
 const listUserSubmissionsForProblem = `-- name: ListUserSubmissionsForProblem :many
-SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at FROM submissions
+SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases FROM submissions
 WHERE user_id = $1 AND problem_id = $2
 ORDER BY submitted_at DESC
 LIMIT $3
@@ -266,6 +284,9 @@ func (q *Queries) ListUserSubmissionsForProblem(ctx context.Context, arg ListUse
 			&i.ErrorMessage,
 			&i.IsCorrect,
 			&i.SubmittedAt,
+			&i.Score,
+			&i.TotalTestCases,
+			&i.PassedTestCases,
 		); err != nil {
 			return nil, err
 		}

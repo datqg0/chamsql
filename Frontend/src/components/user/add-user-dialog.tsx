@@ -1,9 +1,9 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
-import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
+import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -22,6 +22,7 @@ import {
     FormLabel,
     FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import {
     Select,
     SelectContent,
@@ -29,7 +30,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
 import { userService } from '@/services/user.service'
 
 const userSchema = z.object({

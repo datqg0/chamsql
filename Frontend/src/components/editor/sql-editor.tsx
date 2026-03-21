@@ -1,7 +1,8 @@
 import Editor, { type OnMount } from '@monaco-editor/react'
-import { useTheme } from '@/components/theme-provider'
 import type { editor } from 'monaco-editor'
 import { useEffect, useRef } from 'react'
+
+import { useTheme } from '@/components/theme-provider'
 import type { SQLSyntaxError } from '@/lib/sql-checker'
 
 // SQL Keywords for autocomplete

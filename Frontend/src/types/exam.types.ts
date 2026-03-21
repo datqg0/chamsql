@@ -9,6 +9,36 @@ export interface Topic {
     sortOrder?: number
 }
 
+export interface TestCase {
+    id: number
+    name: string
+    description?: string
+    initScript: string
+    solutionQuery: string
+    weight: number
+    isHidden: boolean
+}
+
+export interface TestCaseRequest {
+    name: string
+    description?: string
+    initScript: string
+    solutionQuery: string
+    weight: number
+    isHidden: boolean
+}
+
+export interface TestResult {
+    testCaseId: number
+    testCaseName: string
+    status: 'accepted' | 'wrong_answer' | 'error' | 'timeout'
+    executionMs: number
+    isCorrect: boolean
+    isHidden: boolean
+    actualOutput?: any
+    errorMessage?: string
+}
+
 export interface Problem {
     id: number
     title: string
@@ -20,7 +50,7 @@ export interface Problem {
     supportedDatabases: string[]
     orderMatters: boolean
     isPublic: boolean
-    testCases?: string
+    testCases?: TestCase[]
     topicId?: number
     topicName?: string
     topicSlug?: string
@@ -39,14 +69,24 @@ export interface Submission {
     id: number
     problemId: number
     userId: number
-    code: string
-    databaseType: string
-    status: 'pending' | 'accepted' | 'wrong_answer' | 'error'
-    executionTime?: number
-    createdAt: string
     examId?: number
     examTitle?: string
+    problemTitle?: string
+    problemSlug?: string
+    code: string
+    databaseType: string
+    status: 'pending' | 'accepted' | 'wrong_answer' | 'error' | 'timeout'
+    isCorrect: boolean
+    executionTime?: number
     score?: number
+    totalTests?: number
+    passedTests?: number
+    errorMessage?: string
+    expectedOutput?: any
+    actualOutput?: any
+    testResults?: TestResult[]
+    submittedAt: string
+    createdAt?: string
 }
 
 export interface SubmissionListResponse {
@@ -63,9 +103,12 @@ export interface RunQueryRequest {
 
 export interface RunQueryResponse {
     success: boolean
-    data?: any[]
+    columns?: string[]
+    rows?: any[]
+    rowCount: number
+    executionMs: number
     error?: string
-    executionTime?: string
+    errorType?: string
 }
 
 export interface SubmitSolutionRequest {
@@ -74,13 +117,15 @@ export interface SubmitSolutionRequest {
 }
 
 export interface SubmitSolutionResponse {
-    success: boolean
-    status: 'accepted' | 'wrong_answer' | 'error'
+    id: number
+    isCorrect: boolean
+    status: 'accepted' | 'wrong_answer' | 'error' | 'timeout'
+    executionMs: number
+    score: number
+    totalTests: number
+    passedTests: number
     message?: string
-    testCases?: {
-        passed: number
-        total: number
-    }
+    testResults?: TestResult[]
 }
 
 // Exam Types

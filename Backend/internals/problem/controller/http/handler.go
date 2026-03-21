@@ -43,7 +43,12 @@ func (h *ProblemHandler) List(c *gin.Context) {
 		query.PageSize = 20
 	}
 
-	result, err := h.usecase.List(c.Request.Context(), &query)
+	role := ""
+	if r, ok := middlewares.GetUserRole(c); ok {
+		role = r
+	}
+
+	result, err := h.usecase.List(c.Request.Context(), role, &query)
 	if err != nil {
 		response.InternalServerError(c, err.Error())
 		return

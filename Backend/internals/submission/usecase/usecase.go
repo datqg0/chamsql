@@ -96,68 +96,146 @@ func (u *submissionUseCase) Submit(ctx context.Context, userID, problemID int64,
 
 	dbType := runner.DBType(req.DatabaseType)
 
-	// Execute expected query (solution)
-	expectedResult, err := u.runner.ExecuteWithSetup(ctx, dbType, problem.InitScript, problem.SolutionQuery)
-	if err != nil {
-		// Provide more context if it's a runner error
-		if expectedResult != nil && expectedResult.Error != "" {
-			return nil, fmt.Errorf("solution query failed: %s (SQL Error: %s)", err.Error(), expectedResult.Error)
+	// Get test cases
+	testCases, _ := u.problemRepo.ListTestCases(ctx, problemID)
+
+	var (
+		totalWeight      int32
+		passedWeight     int32
+		passedTests      int
+		finalStatus      = "accepted"
+		totalExecTime    int64
+		testResults      []dto.TestResultResponse
+		firstError       string
+	)
+
+	// If no test cases, use problem's default init_script and solution_query as the single test case
+	if len(testCases) == 0 {
+		testCases = []models.ProblemTestCase{
+			{
+				ID:            0,
+				ProblemID:     problemID,
+				InitScript:    problem.InitScript,
+				SolutionQuery: problem.SolutionQuery,
+				Weight:        ptrToInt32Ptr(1),
+			},
 		}
-		return nil, fmt.Errorf("failed to execute solution query: %w", err)
 	}
 
-	// Execute user query
-	actualResult, err := u.runner.ExecuteWithSetup(ctx, dbType, problem.InitScript, req.Code)
+	testResults = make([]dto.TestResultResponse, 0, len(testCases))
+	for _, tc := range testCases {
+		weight := ptrToInt32Val(tc.Weight)
+		totalWeight += weight
 
-	// Compare results
-	orderMatters := ptrToBool(problem.OrderMatters)
-	compareResult := u.runner.Compare(expectedResult, actualResult, orderMatters)
+		// Execute expected query
+		expectedResult, err := u.runner.ExecuteWithSetup(ctx, dbType, tc.InitScript, tc.SolutionQuery)
+		if err != nil {
+			// This is a system/problem error
+			continue
+		}
 
-	// Determine status
-	status := "wrong_answer"
-	if actualResult.Error != "" {
-		if actualResult.ErrorType == "timeout" {
-			status = "timeout"
+		// Execute user query
+		actualResult, err := u.runner.ExecuteWithSetup(ctx, dbType, tc.InitScript, req.Code)
+		totalExecTime += actualResult.ExecutionMs
+
+		// Compare
+		orderMatters := ptrToBool(problem.OrderMatters)
+		compareResult := u.runner.Compare(expectedResult, actualResult, orderMatters)
+
+		trStatus := "wrong_answer"
+		if actualResult.Error != "" {
+			if actualResult.ErrorType == "timeout" {
+				trStatus = "timeout"
+				if finalStatus == "accepted" {
+					finalStatus = "timeout"
+				}
+			} else {
+				trStatus = "error"
+				if finalStatus == "accepted" {
+					finalStatus = "error"
+				}
+			}
+			if firstError == "" {
+				firstError = actualResult.Error
+			}
+		} else if compareResult.IsCorrect {
+			trStatus = "accepted"
+			passedWeight += weight
+			passedTests++
 		} else {
-			status = "error"
+			if finalStatus == "accepted" {
+				finalStatus = "wrong_answer"
+			}
 		}
-	} else if compareResult.IsCorrect {
-		status = "accepted"
+
+		testResults = append(testResults, dto.TestResultResponse{
+			TestCaseID:   tc.ID,
+			TestCaseName: ptrToStr(tc.Name),
+			Status:       trStatus,
+			ExecutionMs:  actualResult.ExecutionMs,
+			IsCorrect:    compareResult.IsCorrect,
+			IsHidden:     ptrToBool(tc.IsHidden),
+			ActualOutput: marshalJSON(actualResult.Rows),
+			ErrorMessage: actualResult.Error,
+		})
+
 	}
 
-	// Convert results to JSON
-	expectedJSON, _ := json.Marshal(expectedResult.Rows)
-	actualJSON, _ := json.Marshal(actualResult.Rows)
-	execTimeMs := int32(actualResult.ExecutionMs)
+	if passedTests < len(testCases) && finalStatus == "accepted" {
+		finalStatus = "wrong_answer"
+	}
+	
+	score := 0.0
+	if totalWeight > 0 {
+		score = (float64(passedWeight) / float64(totalWeight)) * 10.0 // Scale to 10
+	}
 
-	// Save submission
+	execTimeMs := int32(totalExecTime)
+	isCorrectFinal := passedTests == len(testCases)
+
+	// Save main submission
 	submission, err := u.submissionRepo.Create(ctx, models.CreateSubmissionParams{
 		UserID:          userID,
 		ProblemID:       problemID,
 		Code:            req.Code,
 		DatabaseType:    req.DatabaseType,
-		Status:          status,
+		Status:          finalStatus,
 		ExecutionTimeMs: &execTimeMs,
-		ExpectedOutput:  expectedJSON,
-		ActualOutput:    actualJSON,
-		ErrorMessage:    strPtr(actualResult.Error),
-		IsCorrect:       &compareResult.IsCorrect,
+		ErrorMessage:    strPtr(firstError),
+		IsCorrect:       &isCorrectFinal,
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Update score and totals
+	scoreStr := fmt.Sprintf("%.2f", score)
+	_ = u.submissionRepo.UpdateScore(ctx, submission.ID, scoreStr, int32(len(testCases)), int32(passedTests))
+
+	// Save individual test results
+	for _, tr := range testResults {
+		_, _ = u.submissionRepo.CreateTestResult(ctx, models.CreateSubmissionTestResultParams{
+			SubmissionID:    submission.ID,
+			TestCaseID:      tr.TestCaseID,
+			Status:          tr.Status,
+			ExecutionTimeMs: ptrToInt32Ptr(int32(tr.ExecutionMs)),
+			ActualOutput:    tr.ActualOutput,
+			ErrorMessage:    strPtr(tr.ErrorMessage),
+			IsCorrect:       &tr.IsCorrect,
+		})
+	}
+
 	return &dto.SubmitQueryResponse{
 		ID:             submission.ID,
-		IsCorrect:      compareResult.IsCorrect,
-		Status:         status,
-		ExecutionMs:    actualResult.ExecutionMs,
-		Message:        compareResult.Message,
-		ExpectedRows:   compareResult.ExpectedRows,
-		ActualRows:     compareResult.ActualRows,
-		ExpectedOutput: expectedJSON,
-		ActualOutput:   actualJSON,
-		Error:          actualResult.Error,
+		IsCorrect:      isCorrectFinal,
+		Status:         finalStatus,
+		ExecutionMs:    totalExecTime,
+		Score:          score,
+		TotalTests:     len(testCases),
+		PassedTests:    passedTests,
+		Message:        fmt.Sprintf("Passed %d/%d test cases", passedTests, len(testCases)),
+		Error:          firstError,
+		TestResults:    testResults,
 	}, nil
 }
 
@@ -167,27 +245,10 @@ func (u *submissionUseCase) GetByID(ctx context.Context, id int64) (*dto.Submiss
 		return nil, ErrSubmissionNotFound
 	}
 
-	var execTime *int
-	if submission.ExecutionTimeMs != nil {
-		e := int(*submission.ExecutionTimeMs)
-		execTime = &e
-	}
+	// Get test results
+	testResults, _ := u.submissionRepo.ListTestResults(ctx, id)
 
-	return &dto.SubmissionResponse{
-		ID:              submission.ID,
-		ProblemID:       submission.ProblemID,
-		ProblemTitle:    submission.ProblemTitle,
-		ProblemSlug:     submission.ProblemSlug,
-		Code:            submission.Code,
-		DatabaseType:    submission.DatabaseType,
-		Status:          submission.Status,
-		IsCorrect:       ptrToBool(submission.IsCorrect),
-		ExecutionTimeMs: execTime,
-		ExpectedOutput:  submission.ExpectedOutput,
-		ActualOutput:    submission.ActualOutput,
-		ErrorMessage:    ptrToStr(submission.ErrorMessage),
-		SubmittedAt:     submission.SubmittedAt.Time.Format("2006-01-02T15:04:05Z"),
-	}, nil
+	return toSubmissionResponse(submission, testResults), nil
 }
 
 func (u *submissionUseCase) ListByUser(ctx context.Context, userID int64, page, pageSize int) (*dto.SubmissionListResponse, error) {
@@ -206,6 +267,10 @@ func (u *submissionUseCase) ListByUser(ctx context.Context, userID int64, page, 
 			e := int(*s.ExecutionTimeMs)
 			execTime = &e
 		}
+		
+		var score float64
+		_ = s.Score.Scan(&score)
+
 		result[i] = dto.SubmissionResponse{
 			ID:              s.ID,
 			ProblemID:       s.ProblemID,
@@ -215,6 +280,9 @@ func (u *submissionUseCase) ListByUser(ctx context.Context, userID int64, page, 
 			DatabaseType:    s.DatabaseType,
 			Status:          s.Status,
 			IsCorrect:       ptrToBool(s.IsCorrect),
+			Score:           score,
+			TotalTests:      int(ptrToInt32Val(s.TotalTestCases)),
+			PassedTests:     int(ptrToInt32Val(s.PassedTestCases)),
 			ExecutionTimeMs: execTime,
 			SubmittedAt:     s.SubmittedAt.Time.Format("2006-01-02T15:04:05Z"),
 		}
@@ -231,6 +299,49 @@ func (u *submissionUseCase) ListByUser(ctx context.Context, userID int64, page, 
 }
 
 // Helper functions
+func toSubmissionResponse(s *models.GetSubmissionByIDRow, testResults []models.ListSubmissionTestResultsRow) *dto.SubmissionResponse {
+	var execTime *int
+	if s.ExecutionTimeMs != nil {
+		e := int(*s.ExecutionTimeMs)
+		execTime = &e
+	}
+
+	var score float64
+	_ = s.Score.Scan(&score)
+
+	trResponses := make([]dto.TestResultResponse, len(testResults))
+	for i, tr := range testResults {
+		trResponses[i] = dto.TestResultResponse{
+			TestCaseID:   tr.TestCaseID,
+			TestCaseName: ptrToStr(tr.TestCaseName),
+			Status:       tr.Status,
+			ExecutionMs:  int64(ptrToInt32Val(tr.ExecutionTimeMs)),
+			IsCorrect:    ptrToBool(tr.IsCorrect),
+			IsHidden:     ptrToBool(tr.IsHidden),
+			ActualOutput: tr.ActualOutput,
+			ErrorMessage: ptrToStr(tr.ErrorMessage),
+		}
+	}
+
+	return &dto.SubmissionResponse{
+		ID:              s.ID,
+		ProblemID:       s.ProblemID,
+		ProblemTitle:    s.ProblemTitle,
+		ProblemSlug:     s.ProblemSlug,
+		Code:            s.Code,
+		DatabaseType:    s.DatabaseType,
+		Status:          s.Status,
+		IsCorrect:       ptrToBool(s.IsCorrect),
+		Score:           score,
+		TotalTests:      int(ptrToInt32Val(s.TotalTestCases)),
+		PassedTests:     int(ptrToInt32Val(s.PassedTestCases)),
+		ExecutionTimeMs: execTime,
+		ErrorMessage:    ptrToStr(s.ErrorMessage),
+		SubmittedAt:     s.SubmittedAt.Time.Format("2006-01-02T15:04:05Z"),
+		TestResults:     trResponses,
+	}
+}
+
 func containsDB(dbs []string, db string) bool {
 	for _, d := range dbs {
 		if d == db {
@@ -259,4 +370,20 @@ func strPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func ptrToInt32Val(i *int32) int32 {
+	if i == nil {
+		return 0
+	}
+	return *i
+}
+
+func ptrToInt32Ptr(i int32) *int32 {
+	return &i
+}
+
+func marshalJSON(v interface{}) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
 }

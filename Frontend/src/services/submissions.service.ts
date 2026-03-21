@@ -1,5 +1,4 @@
 import type {
-    Submission,
     SubmissionListResponse,
 } from '@/types/exam.types'
 

@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios'
 
 export const api = axios.create({
-    baseURL: 'http://localhost:8080/api/v1',
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1',
     timeout: 30000,
     headers: {
         'Content-Type': 'application/json',
@@ -26,20 +26,51 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
     (response) => {
-        // Nếu response có format { success: true, data: ... }
-        if (response.data?.success !== undefined) {
-            return response
-        }
-        // Nếu response trực tiếp là data
         return response
     },
     async (error: AxiosError) => {
-        if (error.response?.status === 401) {
-            // Clear auth storage
+        const originalRequest = error.config as any
+
+        // Prevent infinite loop if /auth/refresh itself returns 401
+        if (originalRequest.url === '/auth/refresh') {
             localStorage.removeItem('auth-storage')
-            // Redirect to login
             if (window.location.pathname !== '/') {
                 window.location.href = '/'
+            }
+            return Promise.reject(error)
+        }
+
+        // Do not attempt to refresh if the error comes from login or register
+        const isAuthEndpoint = originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/register');
+
+        // Handle 401: Unauthorized -> Try to refresh token
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+            originalRequest._retry = true
+
+            try {
+                // Call refresh endpoint
+                const { data } = await api.post('/auth/refresh')
+
+                if (data.success) {
+                    const { accessToken, user } = data.data
+
+                    // Update auth store
+                    const { setAuth } = await import('@/stores/use-auth-store').then((m) =>
+                        m.useAuthStore.getState()
+                    )
+                    setAuth(accessToken, user)
+
+                    // Retry original request
+                    originalRequest.headers.Authorization = `Bearer ${accessToken}`
+                    return api(originalRequest)
+                }
+            } catch (refreshError) {
+                // Refresh failed -> Logout
+                localStorage.removeItem('auth-storage')
+                if (window.location.pathname !== '/') {
+                    window.location.href = '/'
+                }
+                return Promise.reject(refreshError)
             }
         }
 

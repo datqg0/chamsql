@@ -1,7 +1,3 @@
-import { useState, useRef, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
 import {
     MessageCircle,
     X,
@@ -13,6 +9,11 @@ import {
     Minimize2,
     Maximize2,
 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 export interface ChatMessage {

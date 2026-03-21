@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -65,10 +65,10 @@ function LoginPage() {
                         if (role === 'student') redirectPath = '/practice'
                         else if (role === 'lecturer') redirectPath = '/grading'
 
-                        // Delay nhỏ để đảm bảo state đã persist
+                        // Delay để đảm bảo state đã persist vào localStorage
                         setTimeout(() => {
                             navigate({ to: redirectPath as any })
-                        }, 100)
+                        }, 300)
                     }
                 },
                 onError: (err: any) => {
@@ -158,4 +158,27 @@ function LoginPage() {
 
 export const Route = createFileRoute('/')({
     component: LoginPage,
+    beforeLoad: () => {
+        // Check if user is already authenticated
+        const authStorage = localStorage.getItem('auth-storage')
+        if (authStorage) {
+            try {
+                const { state } = JSON.parse(authStorage)
+                if (state?.token && state?.isAuthenticated) {
+                    const role = state.userRole || state.user?.role
+                    let redirectPath = '/dashboard'
+                    if (role === 'student') redirectPath = '/practice'
+                    else if (role === 'lecturer') redirectPath = '/grading'
+
+                    throw new Error(`redirect:${redirectPath}`)
+                }
+            } catch (e) {
+                // If it's our redirect signal, re-throw it
+                if (e instanceof Error && e.message.startsWith('redirect:')) {
+                    const path = e.message.split(':')[1]
+                    window.location.href = path
+                }
+            }
+        }
+    },
 })

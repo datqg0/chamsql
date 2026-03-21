@@ -15,9 +15,16 @@ type IProblemRepository interface {
 	List(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error)
 	ListByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error)
 	ListByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error)
+	ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error)
+	ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error)
+	ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error)
 	Update(ctx context.Context, params models.UpdateProblemParams) (*models.Problem, error)
 	Delete(ctx context.Context, id int64) error
 	Count(ctx context.Context) (int64, error)
+	// Test Case Management
+	CreateTestCase(ctx context.Context, params models.CreateProblemTestCaseParams) (*models.ProblemTestCase, error)
+	ListTestCases(ctx context.Context, problemID int64) ([]models.ProblemTestCase, error)
+	DeleteAllTestCases(ctx context.Context, problemID int64) error
 }
 
 type problemRepository struct {
@@ -90,6 +97,29 @@ func (r *problemRepository) ListByDifficulty(ctx context.Context, difficulty str
 	})
 }
 
+func (r *problemRepository) ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error) {
+	return r.queries.ListAdminProblems(ctx, models.ListProblemsParams{
+		Limit:  limit,
+		Offset: offset,
+	})
+}
+
+func (r *problemRepository) ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error) {
+	return r.queries.ListAdminProblemsByTopic(ctx, models.ListProblemsByTopicParams{
+		TopicID: &topicID,
+		Limit:   limit,
+		Offset:  offset,
+	})
+}
+
+func (r *problemRepository) ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error) {
+	return r.queries.ListAdminProblemsByDifficulty(ctx, models.ListProblemsByDifficultyParams{
+		Difficulty: difficulty,
+		Limit:      limit,
+		Offset:     offset,
+	})
+}
+
 func (r *problemRepository) Update(ctx context.Context, params models.UpdateProblemParams) (*models.Problem, error) {
 	problem, err := r.queries.UpdateProblem(ctx, params)
 	if err != nil {
@@ -104,4 +134,20 @@ func (r *problemRepository) Delete(ctx context.Context, id int64) error {
 
 func (r *problemRepository) Count(ctx context.Context) (int64, error) {
 	return r.queries.CountProblems(ctx)
+}
+
+func (r *problemRepository) CreateTestCase(ctx context.Context, params models.CreateProblemTestCaseParams) (*models.ProblemTestCase, error) {
+	tc, err := r.queries.CreateProblemTestCase(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return &tc, nil
+}
+
+func (r *problemRepository) ListTestCases(ctx context.Context, problemID int64) ([]models.ProblemTestCase, error) {
+	return r.queries.ListProblemTestCases(ctx, problemID)
+}
+
+func (r *problemRepository) DeleteAllTestCases(ctx context.Context, problemID int64) error {
+	return r.queries.DeleteAllProblemTestCases(ctx, problemID)
 }

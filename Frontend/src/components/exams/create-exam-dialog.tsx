@@ -1,8 +1,9 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Plus, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
 import toast from 'react-hot-toast'
+import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -24,8 +25,6 @@ import {
     FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
 import {
     Select,
     SelectContent,
@@ -33,9 +32,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { examsService } from '@/services/exams.service'
 import type { CreateExamRequest } from '@/types/exam.types'
-import { Plus, Loader2 } from 'lucide-react'
+
 
 const examSchema = z.object({
     title: z.string().min(3, 'Tên kỳ thi phải có ít nhất 3 ký tự'),

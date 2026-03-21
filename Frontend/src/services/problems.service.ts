@@ -36,28 +36,35 @@ export const problemsService = {
     },
 
     async getBySlug(slug: string): Promise<Problem> {
-        const { data } = await api.get<Problem>(API_ENDPOINTS.problems.bySlug(slug))
-        return data
+        const { data } = await api.get<any>(API_ENDPOINTS.problems.bySlug(slug))
+        return data.data || data
     },
 
     async create(problem: Omit<Problem, 'id'>): Promise<Problem> {
-        const { data } = await api.post<Problem>(API_ENDPOINTS.problems.create, problem)
-        return data
+        const { data } = await api.post<any>(API_ENDPOINTS.problems.create, problem)
+        return data.data || data
     },
 
     async run(problemId: number, request: RunQueryRequest): Promise<RunQueryResponse> {
-        const { data } = await api.post<RunQueryResponse>(
+        const { data } = await api.post<any>(
             API_ENDPOINTS.problems.run(problemId),
             request
         )
-        return data
+        return data.data || data
     },
 
     async submit(problemId: number, request: SubmitSolutionRequest): Promise<SubmitSolutionResponse> {
-        const { data } = await api.post<SubmitSolutionResponse>(
+        const { data } = await api.post<any>(
             API_ENDPOINTS.problems.submit(problemId),
             request
         )
-        return data
+        return data.data || data
+    },
+    async update(id: number, problem: Partial<Problem>): Promise<Problem> {
+        const { data } = await api.put<any>(API_ENDPOINTS.problems.update(id), problem)
+        return data.data || data
+    },
+    async delete(id: number): Promise<void> {
+        await api.delete(API_ENDPOINTS.problems.delete(id))
     },
 }

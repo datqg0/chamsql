@@ -1,36 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
-import { MainLayout } from '@/components/layouts/main-layout'
-import { SQLEditor } from '@/components/editor/sql-editor'
-import { AIChatPanel } from '@/components/ai/ai-chat-panel'
-import { CreateTopicDialog } from '@/components/practice/create-topic-dialog'
-import { CreateProblemDialog } from '@/components/practice/create-problem-dialog'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
-import {
-    ResizablePanelGroup,
-    ResizablePanel,
-    ResizableHandle,
-} from '@/components/ui/resizable'
-import { useSQLChecker } from '@/hooks/use-sql-checker'
-import { useAuthStore } from '@/stores/use-auth-store'
-import { topicsService } from '@/services/topics.service'
-import { problemsService } from '@/services/problems.service'
-import type { Topic, Problem } from '@/types/exam.types'
+import { createFileRoute } from '@tanstack/react-router'
 import {
     ArrowLeft,
     Play,
@@ -39,33 +8,70 @@ import {
     Code,
     FileText,
     BookOpen,
-    Table,
+    Trash2,
 } from 'lucide-react'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
+import remarkGfm from 'remark-gfm'
+
+import { AIChatPanel } from '@/components/ai/ai-chat-panel'
+import { SQLEditor } from '@/components/editor/sql-editor'
+import { MainLayout } from '@/components/layouts/main-layout'
+import { CreateProblemDialog } from '@/components/practice/create-problem-dialog'
+import { CreateTopicDialog } from '@/components/practice/create-topic-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+    ResizablePanelGroup,
+    ResizablePanel,
+    ResizableHandle,
+} from '@/components/ui/resizable'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useSQLChecker } from '@/hooks/use-sql-checker'
 import { cn } from '@/lib/utils'
+import { problemsService } from '@/services/problems.service'
+import { topicsService } from '@/services/topics.service'
+import { useAuthStore } from '@/stores/use-auth-store'
+import type { Topic, Problem } from '@/types/exam.types'
+
 function PracticePage() {
     const { userRole, isOperator } = useAuthStore()
     const queryClient = useQueryClient()
     const isLecturer = isOperator() || userRole === 'lecturer'
+
     // Navigation state
-    const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
+    const [, setSelectedTopic] = useState<Topic | null>(null)
     const [selectedProblem, setSelectedProblem] = useState<Problem | null>(null)
     const [difficultyFilter, setDifficultyFilter] = useState<string>('all')
+
     // Editor state
     const [sqlQuery, setSqlQuery] = useState('')
     const [isRunning, setIsRunning] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [result, setResult] = useState<any>(null)
     const [activeTab, setActiveTab] = useState<'problem' | 'result'>('problem')
-    const [mobileView, setMobileView] = useState<'problem' | 'editor'>('problem')
+
     const { isValid, syntaxError } = useSQLChecker(sqlQuery, {
         debounceMs: 300,
         database: 'MySQL',
     })
+
     // Fetch topics
     const { data: topics = [], isLoading: loadingTopics } = useQuery({
         queryKey: ['topics'],
         queryFn: () => topicsService.list(),
     })
+
     // Fetch all problems
     const { data: allProblemsData, isLoading: loadingAllProblems } = useQuery({
         queryKey: ['all-problems', difficultyFilter],
@@ -78,34 +84,28 @@ function PracticePage() {
         },
     })
     const allProblems = Array.isArray(allProblemsData) ? allProblemsData : []
-    // Fetch problems for selected topic
-    const { data: topicProblemsData, isLoading: loadingTopicProblems } = useQuery({
-        queryKey: ['topic-problems', selectedTopic?.id],
-        queryFn: async () => {
-            if (!selectedTopic?.id) return []
-            const filters = { topicId: selectedTopic.id }
-            return await problemsService.list(filters)
-        },
-        enabled: !!selectedTopic,
-    })
-    const topicProblems = Array.isArray(topicProblemsData) ? topicProblemsData : []
-    const handleBackToTopics = () => {
-        setSelectedTopic(null)
-    }
+
+    // const handleBackToTopics = () => {
+    //     setSelectedTopic(null)
+    // }
+
     const handleBackToProblems = () => {
         setSelectedProblem(null)
         setSqlQuery('')
         setResult(null)
     }
+
     const handleSelectTopic = (topic: Topic) => {
         setSelectedTopic(topic)
     }
+
     const handleSelectProblem = (problem: Problem) => {
         setSelectedProblem(problem)
         setSqlQuery('')
         setResult(null)
         setActiveTab('problem')
     }
+
     const handleRunTest = async () => {
         if (!selectedProblem) return
         setIsRunning(true)
@@ -117,7 +117,7 @@ function PracticePage() {
                 databaseType: selectedProblem.supportedDatabases[0] || 'postgresql',
             })
             // Parse nested response: response.data contains the actual result
-            const actualData = response.data || response // Adjust based on your API response wrapper
+            const actualData = response // Adjust based on your API response wrapper
             setResult({ type: 'run', data: actualData })
         } catch (error: any) {
             setResult({ type: 'error', error: error?.message || 'Lỗi khi chạy truy vấn' })
@@ -125,6 +125,7 @@ function PracticePage() {
             setIsRunning(false)
         }
     }
+
     const handleSubmit = async () => {
         if (!isValid || !selectedProblem) {
             toast.error('Vui lòng sửa lỗi cú pháp!')
@@ -140,12 +141,11 @@ function PracticePage() {
             })
 
             // Extract data
-            const data = response.data || response
+            const data = response
             if (data.status === 'accepted') {
                 toast.success('Chúc mừng! Bài làm của bạn đúng!')
                 setResult({ type: 'submit', success: true, data: data })
             } else {
-                // toast.error(data.message || 'Bài làm chưa đúng, hãy thử lại!')
                 setResult({ type: 'submit', success: false, data: data })
             }
         } catch (error: any) {
@@ -155,6 +155,21 @@ function PracticePage() {
             setIsSubmitting(false)
         }
     }
+
+    const handleDeleteProblem = async (e: React.MouseEvent, problem: Problem) => {
+        e.stopPropagation()
+        if (window.confirm(`Bạn có chắc chắn muốn xóa bài tập "${problem.title}"?`)) {
+            try {
+                await problemsService.delete(problem.id)
+                toast.success('Xóa bài tập thành công!')
+                queryClient.invalidateQueries({ queryKey: ['all-problems'] })
+                queryClient.invalidateQueries({ queryKey: ['topic-problems'] })
+            } catch (error: any) {
+                toast.error(error?.message || 'Không thể xóa bài tập')
+            }
+        }
+    }
+
     const getDifficultyBadge = (difficulty: Problem['difficulty']) => {
         const config = {
             easy: { label: 'Dễ', className: 'bg-green-500/10 text-green-600' },
@@ -167,6 +182,7 @@ function PracticePage() {
             </Badge>
         )
     }
+
     const renderTable = (columns: string[], rows: any[][]) => {
         if (!columns || !rows) return null
         return (
@@ -200,6 +216,7 @@ function PracticePage() {
             </div>
         )
     }
+
     const renderResultContent = () => {
         if (!result) {
             return (
@@ -249,52 +266,70 @@ function PracticePage() {
             )
         }
         if (result.type === 'submit') {
-            const { isCorrect: dataIsCorrect, status, message, error, expectedOutput, actualOutput, executionMs } = result.data
+            const { isCorrect: dataIsCorrect, status, message, error, score, totalTests, passedTests, testResults, executionMs } = result.data
             const isCorrect = result.success ?? dataIsCorrect
 
-            // Parse outputs if they are JSON strings
-            let expectedRows = []
-            let actualRows = []
-            try {
-                if (typeof expectedOutput === 'string') expectedRows = JSON.parse(expectedOutput)
-                else expectedRows = expectedOutput
-
-                if (typeof actualOutput === 'string') actualRows = JSON.parse(actualOutput)
-                else actualRows = actualOutput
-            } catch (e) {
-                console.error("Error parsing output JSON", e)
-            }
             return (
                 <div className="space-y-4">
                     <div className={`p-4 rounded-md border ${isCorrect ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                         <div className="flex items-center justify-between mb-2">
                             <h3 className={`font-bold ${isCorrect ? 'text-green-700' : 'text-red-700'}`}>
-                                {isCorrect ? 'Chính xác! ' : 'Sai kết quả '}
+                                {isCorrect ? 'Hoàn thành!' : 'Bài làm chưa đạt'}
                             </h3>
-                            <Badge variant={isCorrect ? "default" : "destructive"}>{status || (isCorrect ? 'Accepted' : 'Failed')}</Badge>
-                        </div>
-                        <p className="text-sm font-medium">{message || error || 'Có lỗi xảy ra'}</p>
-                        {executionMs && <p className="text-xs text-muted-foreground mt-2">Thời gian chạy: {executionMs}ms</p>}
-                    </div>
-                    {!isCorrect && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <h4 className="font-medium text-sm flex items-center">
-                                    <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-                                    Kết quả mong đợi (Expected)
-                                </h4>
-                                <div className="max-h-[300px] overflow-auto border rounded bg-muted/10 p-2 text-xs">
-                                    <pre>{JSON.stringify(expectedRows, null, 2)}</pre>
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <Badge variant={isCorrect ? "default" : "destructive"}>{status?.toUpperCase() || (isCorrect ? 'ACCEPTED' : 'FAILED')}</Badge>
+                                <Badge variant="outline" className="font-mono">Điểm: {score?.toFixed(1) || 0}/10</Badge>
                             </div>
-                            <div className="space-y-2">
-                                <h4 className="font-medium text-sm flex items-center">
-                                    <span className="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
-                                    Kết quả của bạn (Actual)
-                                </h4>
-                                <div className="max-h-[300px] overflow-auto border rounded bg-muted/10 p-2 text-xs">
-                                    <pre>{JSON.stringify(actualRows, null, 2)}</pre>
-                                </div>
+                        </div>
+                        <p className="text-sm font-medium">{message || error || (isCorrect ? 'Tất cả test case đã vượt qua!' : 'Một số test case không vượt qua.')}</p>
+                        <div className="flex items-center gap-4 mt-2">
+                            <span className="text-xs text-muted-foreground">Vượt qua: {passedTests}/{totalTests} tests</span>
+                            {executionMs && <span className="text-xs text-muted-foreground">Tổng thời gian: {executionMs}ms</span>}
+                        </div>
+                    </div>
+
+                    {testResults && testResults.length > 0 && (
+                        <div className="space-y-3 mt-6">
+                            <h4 className="text-sm font-semibold flex items-center gap-2">
+                                <FileText className="h-4 w-4" />
+                                Chi tiết Test Cases
+                            </h4>
+                            <div className="grid grid-cols-1 gap-2">
+                                {testResults.map((tr: any, idx: number) => (
+                                    <div key={idx} className="border rounded-md p-3 bg-muted/5">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-mono text-muted-foreground">#{idx + 1}</span>
+                                                <span className="text-sm font-medium">{tr.testCaseName || `Test Case ${idx + 1}`}</span>
+                                                {tr.isHidden && <Badge variant="outline" className="text-[10px] h-4">Hidden</Badge>}
+                                            </div>
+                                            <Badge
+                                                variant={tr.isCorrect ? "outline" : "destructive"}
+                                                className={cn("text-[10px] px-1.5 h-5", tr.isCorrect && "bg-green-500/10 text-green-600 border-green-200")}
+                                            >
+                                                {tr.status}
+                                            </Badge>
+                                        </div>
+
+                                        {!tr.isHidden && !tr.isCorrect && (
+                                            <div className="mt-2 space-y-2">
+                                                {tr.errorMessage && (
+                                                    <div className="text-xs text-red-600 bg-red-500/5 p-2 rounded border border-red-500/10 font-mono">
+                                                        {tr.errorMessage}
+                                                    </div>
+                                                )}
+                                                {tr.actualOutput && (
+                                                    <div className="space-y-1">
+                                                        <span className="text-[10px] text-muted-foreground uppercase font-bold">Kết quả thực tế:</span>
+                                                        <div className="max-h-[150px] overflow-auto border rounded bg-background p-2 text-[10px] font-mono">
+                                                            <pre>{typeof tr.actualOutput === 'string' ? tr.actualOutput : JSON.stringify(tr.actualOutput, null, 2)}</pre>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -303,6 +338,7 @@ function PracticePage() {
         }
         return null
     }
+
     // Problem Detail View
     if (selectedProblem) {
         return (
@@ -413,7 +449,6 @@ function PracticePage() {
                     </div>
                     {/* Mobile Layout */}
                     <div className="lg:hidden flex-1 overflow-hidden">
-                        {/* Simplified mobile view... (giữ nguyên hoặc cập nhật tương tự) */}
                         <div className="p-4 text-center text-muted-foreground">
                             Vui lòng sử dụng máy tính để có trải nghiệm tốt nhất.
                         </div>
@@ -429,7 +464,7 @@ function PracticePage() {
             </MainLayout>
         )
     }
-    // ... (Phần render Topics/Problems list giữ nguyên như cũ)
+
     return (
         <MainLayout>
             <div className="space-y-6">
@@ -489,7 +524,7 @@ function PracticePage() {
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
                                 <label className="text-sm font-medium">Độ khó:</label>
-                                <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
+                                < Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
                                     <SelectTrigger className="w-[150px]">
                                         <SelectValue />
                                     </SelectTrigger>
@@ -533,12 +568,37 @@ function PracticePage() {
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-medium">{problem.title}</span>
                                                         {getDifficultyBadge(problem.difficulty)}
+                                                        {problem.topicName && (
+                                                            <Badge variant="secondary" className="font-normal text-xs">{problem.topicName}</Badge>
+                                                        )}
+                                                        {problem.isPublic === false && (
+                                                            <Badge variant="outline" className="text-muted-foreground font-normal text-xs">Nháp</Badge>
+                                                        )}
                                                     </div>
                                                     <div
                                                         className="text-sm text-muted-foreground mt-1 line-clamp-2"
                                                         dangerouslySetInnerHTML={{ __html: problem.description }}
                                                     />
                                                 </div>
+                                                {isLecturer && (
+                                                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                        <CreateProblemDialog
+                                                            problem={problem}
+                                                            onSuccess={() => {
+                                                                queryClient.invalidateQueries({ queryKey: ['all-problems'] })
+                                                                queryClient.invalidateQueries({ queryKey: ['topic-problems'] })
+                                                            }}
+                                                        />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            onClick={(e) => handleDeleteProblem(e, problem)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -553,6 +613,7 @@ function PracticePage() {
         </MainLayout>
     )
 }
+
 export const Route = createFileRoute('/practice')({
     component: PracticePage,
 })

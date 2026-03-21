@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
+import logoImg from '@/assets/logo.png'
+import { ModeToggle } from '@/components/mode-toggle'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -22,11 +24,9 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ModeToggle } from '@/components/mode-toggle'
 import { useLogout } from '@/hooks/use-auth'
-import { useAuthStore } from '@/stores/use-auth-store'
 import { cn } from '@/lib/utils'
-import logoImg from '@/assets/logo.png'
+import { useAuthStore } from '@/stores/use-auth-store'
 
 interface MainLayoutProps {
     children: React.ReactNode

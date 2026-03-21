@@ -1,11 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { createFileRoute } from '@tanstack/react-router'
+import { Trash2, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Trash2, RotateCcw } from 'lucide-react'
 
 import { MainLayout } from '@/components/layouts/main-layout'
-import { AddUserDialog } from '@/components/user/add-user-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
     Select,
@@ -14,8 +15,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { AddUserDialog } from '@/components/user/add-user-dialog'
+import { EditUserDialog } from '@/components/user/edit-user-dialog'
 import { userService, type User } from '@/services/user.service'
 import { useAuthStore } from '@/stores/use-auth-store'
 
@@ -160,6 +161,12 @@ function UsersPage() {
                                                     </td>
                                                     <td className="p-3">
                                                         <div className="flex items-center gap-2">
+                                                            <EditUserDialog
+                                                                user={user}
+                                                                onSuccess={() => {
+                                                                    queryClient.invalidateQueries({ queryKey: ['users'] })
+                                                                }}
+                                                            />
                                                             {user.isActive ? (
                                                                 <Button
                                                                     variant="ghost"

@@ -17,7 +17,7 @@ var (
 type IProblemUseCase interface {
 	Create(ctx context.Context, userID int64, req *dto.CreateProblemRequest) (*dto.ProblemResponse, error)
 	GetBySlug(ctx context.Context, slug string, userID *int64) (*dto.ProblemResponse, error)
-	List(ctx context.Context, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
+	List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
 	Update(ctx context.Context, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
 	Delete(ctx context.Context, id int64) error
 }
@@ -59,7 +59,28 @@ func (u *problemUseCase) Create(ctx context.Context, userID int64, req *dto.Crea
 		return nil, err
 	}
 
-	return toProblemResponse(problem), nil
+	// Create test cases if provided
+	var testCases []models.ProblemTestCase
+	if len(req.TestCases) > 0 {
+		testCases = make([]models.ProblemTestCase, 0, len(req.TestCases))
+		for _, tcReq := range req.TestCases {
+			tc, err := u.repo.CreateTestCase(ctx, models.CreateProblemTestCaseParams{
+				ProblemID:     problem.ID,
+				Name:          &tcReq.Name,
+				Description:   &tcReq.Description,
+				InitScript:    tcReq.InitScript,
+				SolutionQuery: tcReq.SolutionQuery,
+				Weight:        &tcReq.Weight,
+				IsHidden:      &tcReq.IsHidden,
+			})
+			if err != nil {
+				return nil, err
+			}
+			testCases = append(testCases, *tc)
+		}
+	}
+
+	return toProblemResponse(problem, testCases), nil
 }
 
 func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int64) (*dto.ProblemResponse, error) {
@@ -69,25 +90,40 @@ func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int
 		if err != nil {
 			return nil, ErrProblemNotFound
 		}
-		return toProblemWithProgressResponse(problem), nil
+		
+		testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
+
+		return toProblemWithProgressResponse(problem, testCases), nil
 	}
 
 	problem, err := u.repo.GetBySlug(ctx, slug)
 	if err != nil {
 		return nil, ErrProblemNotFound
 	}
-	return toProblemResponse(problem), nil
+
+	// Get test cases
+	testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
+
+	return toProblemResponse(problem, testCases), nil
 }
 
-func (u *problemUseCase) List(ctx context.Context, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error) {
+func (u *problemUseCase) List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error) {
 	offset := int32((query.Page - 1) * query.PageSize)
 	limit := int32(query.PageSize)
 
 	var problems []dto.ProblemResponse
 	var total int64
 
+	isAdmin := role == "admin" || role == "lecturer"
+
 	if query.TopicID != nil {
-		rows, err := u.repo.ListByTopic(ctx, *query.TopicID, limit, offset)
+		var rows []models.ListProblemsByTopicRow
+		var err error
+		if isAdmin {
+			rows, err = u.repo.ListAdminByTopic(ctx, *query.TopicID, limit, offset)
+		} else {
+			rows, err = u.repo.ListByTopic(ctx, *query.TopicID, limit, offset)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -102,10 +138,17 @@ func (u *problemUseCase) List(ctx context.Context, query *dto.ProblemListQuery) 
 				SupportedDatabases: row.SupportedDatabases,
 				TopicName:          ptrToStr(row.TopicName),
 				TopicSlug:          ptrToStr(row.TopicSlug),
+				IsPublic:           ptrToBool(row.IsPublic),
 			}
 		}
 	} else if query.Difficulty != nil {
-		rows, err := u.repo.ListByDifficulty(ctx, *query.Difficulty, limit, offset)
+		var rows []models.ListProblemsByDifficultyRow
+		var err error
+		if isAdmin {
+			rows, err = u.repo.ListAdminByDifficulty(ctx, *query.Difficulty, limit, offset)
+		} else {
+			rows, err = u.repo.ListByDifficulty(ctx, *query.Difficulty, limit, offset)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -120,10 +163,17 @@ func (u *problemUseCase) List(ctx context.Context, query *dto.ProblemListQuery) 
 				SupportedDatabases: row.SupportedDatabases,
 				TopicName:          ptrToStr(row.TopicName),
 				TopicSlug:          ptrToStr(row.TopicSlug),
+				IsPublic:           ptrToBool(row.IsPublic),
 			}
 		}
 	} else {
-		rows, err := u.repo.List(ctx, limit, offset)
+		var rows []models.ListProblemsRow
+		var err error
+		if isAdmin {
+			rows, err = u.repo.ListAdmin(ctx, limit, offset)
+		} else {
+			rows, err = u.repo.List(ctx, limit, offset)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -138,6 +188,7 @@ func (u *problemUseCase) List(ctx context.Context, query *dto.ProblemListQuery) 
 				SupportedDatabases: row.SupportedDatabases,
 				TopicName:          ptrToStr(row.TopicName),
 				TopicSlug:          ptrToStr(row.TopicSlug),
+				IsPublic:           ptrToBool(row.IsPublic),
 			}
 		}
 	}
@@ -196,7 +247,32 @@ func (u *problemUseCase) Update(ctx context.Context, id int64, req *dto.UpdatePr
 		return nil, err
 	}
 
-	return toProblemResponse(problem), nil
+	// Update test cases if provided (replace all)
+	if req.TestCases != nil {
+		_ = u.repo.DeleteAllTestCases(ctx, problem.ID)
+		for _, tcReq := range req.TestCases {
+			_, _ = u.repo.CreateTestCase(ctx, models.CreateProblemTestCaseParams{
+				ProblemID:     problem.ID,
+				Name:          &tcReq.Name,
+				Description:   &tcReq.Description,
+				InitScript:    tcReq.InitScript,
+				SolutionQuery: tcReq.SolutionQuery,
+				Weight:        &tcReq.Weight,
+				IsHidden:      &tcReq.IsHidden,
+			})
+		}
+	}
+
+	// Fetch the full updated problem to ensure we have the slug and other fields
+	updatedProblem, err := u.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get final test cases
+	testCases, _ := u.repo.ListTestCases(ctx, updatedProblem.ID)
+
+	return toProblemResponse(updatedProblem, testCases), nil
 }
 
 func (u *problemUseCase) Delete(ctx context.Context, id int64) error {
@@ -208,7 +284,20 @@ func (u *problemUseCase) Delete(ctx context.Context, id int64) error {
 }
 
 // Helper functions
-func toProblemResponse(p *models.Problem) *dto.ProblemResponse {
+func toProblemResponse(p *models.Problem, testCases []models.ProblemTestCase) *dto.ProblemResponse {
+	tcResponses := make([]dto.TestCaseResponse, len(testCases))
+	for i, tc := range testCases {
+		tcResponses[i] = dto.TestCaseResponse{
+			ID:            tc.ID,
+			Name:          ptrToStr(tc.Name),
+			Description:   ptrToStr(tc.Description),
+			InitScript:    tc.InitScript,
+			SolutionQuery: tc.SolutionQuery,
+			Weight:        ptrToInt32(tc.Weight),
+			IsHidden:      ptrToBool(tc.IsHidden),
+		}
+	}
+
 	return &dto.ProblemResponse{
 		ID:                 p.ID,
 		Title:              p.Title,
@@ -224,10 +313,11 @@ func toProblemResponse(p *models.Problem) *dto.ProblemResponse {
 		SampleOutput:       p.SampleOutput,
 		IsPublic:           ptrToBool(p.IsPublic),
 		CreatedBy:          p.CreatedBy,
+		TestCases:          tcResponses,
 	}
 }
 
-func toProblemWithProgressResponse(p *models.GetProblemWithUserProgressRow) *dto.ProblemResponse {
+func toProblemWithProgressResponse(p *models.GetProblemWithUserProgressRow, testCases []models.ProblemTestCase) *dto.ProblemResponse {
 	var attempts *int
 	if p.Attempts != nil {
 		a := int(*p.Attempts)
@@ -237,6 +327,19 @@ func toProblemWithProgressResponse(p *models.GetProblemWithUserProgressRow) *dto
 	if p.BestTimeMs != nil {
 		b := int(*p.BestTimeMs)
 		bestTime = &b
+	}
+
+	tcResponses := make([]dto.TestCaseResponse, len(testCases))
+	for i, tc := range testCases {
+		tcResponses[i] = dto.TestCaseResponse{
+			ID:            tc.ID,
+			Name:          ptrToStr(tc.Name),
+			Description:   ptrToStr(tc.Description),
+			InitScript:    tc.InitScript,
+			SolutionQuery: tc.SolutionQuery,
+			Weight:        ptrToInt32(tc.Weight),
+			IsHidden:      ptrToBool(tc.IsHidden),
+		}
 	}
 
 	return &dto.ProblemResponse{
@@ -259,6 +362,7 @@ func toProblemWithProgressResponse(p *models.GetProblemWithUserProgressRow) *dto
 		IsSolved:           p.IsSolved,
 		Attempts:           attempts,
 		BestTimeMs:         bestTime,
+		TestCases:          tcResponses,
 	}
 }
 
@@ -274,4 +378,11 @@ func ptrToBool(b *bool) bool {
 		return false
 	}
 	return *b
+}
+
+func ptrToInt32(i *int32) int32 {
+	if i == nil {
+		return 0
+	}
+	return *i
 }

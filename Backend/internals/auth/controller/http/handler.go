@@ -69,7 +69,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	result, err := h.usecase.Login(c.Request.Context(), &req)
 	if err != nil {
 		if err == usecase.ErrInvalidCredentials {
-			response.Unauthorized(c, "Invalid phone or password")
+			response.Unauthorized(c, "Tên đăng nhập/Email hoặc mật khẩu không chính xác")
 			return
 		}
 		response.InternalServerError(c, err.Error())
@@ -77,12 +77,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Set Refresh Token as HttpOnly Cookie (7 days)
-	// SameSite=Lax for normal functioning, Strict for higher security
+	// SameSite=Lax (or Strict)
+	// Secure=false (for localhost dev), true (for production)
+	// HttpOnly=true
 	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", false, true)
 
-	// Omit refreshToken from response body if you want strict security
-	// string refreshToken = result.RefreshToken
-	// result.RefreshToken = "" (optional)
+	// Remove refresh token from response body to prevent JS access
+	result.RefreshToken = "" 
 
 	response.Success(c, result)
 }
@@ -96,23 +97,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Router      /auth/logout [post]
 // @Security    ApiKeyAuth
 func (h *AuthHandler) Logout(c *gin.Context) {
-	tokenString := c.GetHeader("Authorization")
-	if tokenString == "" {
-		response.Unauthorized(c, "Missing authorization header")
-		return
-	}
-	// Strip "Bearer " prefix if present
-	if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
-		tokenString = tokenString[7:]
+	// Try to get refresh token from cookie to revoke it
+	refreshToken, _ := c.Cookie("refresh_token")
+
+	if refreshToken != "" {
+		_ = h.usecase.Logout(c.Request.Context(), refreshToken)
 	}
 
-	err := h.usecase.Logout(c.Request.Context(), tokenString)
-	if err != nil {
-		response.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Clear Refresh Token Cookie
+	// Always clear the cookie
 	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
 
 	response.Success(c, gin.H{"message": "Logged out successfully"})
@@ -155,6 +147,9 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 	// Update Cookie with new refresh token
 	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", false, true)
+
+	// Remove refresh token from response body
+	result.RefreshToken = ""
 
 	response.Success(c, result)
 }

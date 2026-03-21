@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 
 import { websocketService } from '@/services/websocket.service'
-import { useAuthStore } from '@/stores/use-auth-store'
 import type { WebSocketMessage } from '@/services/websocket.service'
+import { useAuthStore } from '@/stores/use-auth-store'
 
 interface UseWebSocketOptions {
     onMessage?: (message: WebSocketMessage) => void

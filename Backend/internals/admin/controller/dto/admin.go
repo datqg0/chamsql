@@ -63,6 +63,20 @@ type UpdateUserRoleRequest struct {
 	Role string `json:"role" binding:"required,oneof=student lecturer admin"`
 }
 
+type UpdateUserRequest struct {
+	Email     *string `json:"email" binding:"omitempty,email"`
+	Username  *string `json:"username" binding:"omitempty,min=3,max=50"`
+	FullName  *string `json:"fullName" binding:"omitempty,min=2,max=100"`
+	StudentID *string `json:"studentId" binding:"omitempty,max=20"`
+	Role      *string `json:"role" binding:"omitempty,oneof=student lecturer admin"`
+}
+
 type ToggleUserActiveRequest struct {
 	IsActive bool `json:"isActive"`
+}
+
+type RoleResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }

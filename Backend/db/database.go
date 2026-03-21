@@ -53,7 +53,6 @@ func (d *Database) Close() {
 	}
 }
 
-func (d *Database) WithContext(ctx context.Context) context.Context {
-	ctx, _ = context.WithTimeout(ctx, DatabaseTimeout)
-	return ctx
+func (d *Database) WithContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, DatabaseTimeout)
 }

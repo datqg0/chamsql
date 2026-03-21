@@ -2,7 +2,7 @@ package dto
 
 type RegisterRequest struct {
 	Email     string `json:"email" binding:"required,email"`
-	Username  string `json:"username" binding:"required,min=3,max=50,alphanum"`
+	Username  string `json:"username" binding:"required,min=3,max=50"`
 	Password  string `json:"password" binding:"required,min=6"`
 	FullName  string `json:"fullName" binding:"required,min=2,max=100"`
 	StudentID string `json:"studentId" binding:"omitempty,max=20"`

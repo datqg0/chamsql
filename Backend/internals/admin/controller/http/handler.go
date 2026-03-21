@@ -113,6 +113,36 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	response.Success(c, gin.H{"message": "User role updated"})
 }
 
+// UpdateUser godoc
+// @Summary     Update user details
+// @Tags        Admin
+// @Accept      json
+// @Produce     json
+// @Param       id path int true "User ID"
+// @Param       request body dto.UpdateUserRequest true "Update details"
+// @Success     200 {object} response.Response
+// @Router      /admin/users/{id} [put]
+func (h *AdminHandler) UpdateUser(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	var req dto.UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	err = h.usecase.UpdateUser(c.Request.Context(), id, &req)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"message": "User updated successfully"})
+}
+
 // ToggleUserActive godoc
 // @Summary     Toggle user active status
 // @Tags        Admin
@@ -141,4 +171,19 @@ func (h *AdminHandler) ToggleUserActive(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"message": "User status updated"})
+}
+// ListRoles godoc
+// @Summary     List all roles in the system
+// @Tags        Admin
+// @Produce     json
+// @Security    BearerAuth
+// @Success     200 {array} dto.RoleResponse
+// @Router      /admin/roles [get]
+func (h *AdminHandler) ListRoles(c *gin.Context) {
+	roles, err := h.usecase.ListRoles(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, roles)
 }

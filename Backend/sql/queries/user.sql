@@ -18,7 +18,11 @@ RETURNING *;
 
 -- name: UpdateUser :one
 UPDATE users SET
+    email = COALESCE(sqlc.narg('email'), email),
+    username = COALESCE(sqlc.narg('username'), username),
     full_name = COALESCE(sqlc.narg('full_name'), full_name),
+    student_id = COALESCE(sqlc.narg('student_id'), student_id),
+    role = COALESCE(sqlc.narg('role'), role),
     avatar_url = COALESCE(sqlc.narg('avatar_url'), avatar_url),
     updated_at = NOW()
 WHERE id = $1

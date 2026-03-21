@@ -84,6 +84,29 @@ type Problem struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
 }
 
+type ProblemTestCase struct {
+	ID            int64              `json:"id"`
+	ProblemID     int64              `json:"problemId"`
+	Name          *string            `json:"name"`
+	Description   *string            `json:"description"`
+	InitScript    string             `json:"initScript"`
+	SolutionQuery string             `json:"solutionQuery"`
+	Weight        *int32             `json:"weight"`
+	IsHidden      *bool              `json:"isHidden"`
+	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt     pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type RefreshToken struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"userId"`
+	Token     string             `json:"token"`
+	ExpiresAt pgtype.Timestamptz `json:"expiresAt"`
+	Revoked   *bool              `json:"revoked"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Submission struct {
 	ID              int64              `json:"id"`
 	UserID          int64              `json:"userId"`
@@ -97,6 +120,21 @@ type Submission struct {
 	ErrorMessage    *string            `json:"errorMessage"`
 	IsCorrect       *bool              `json:"isCorrect"`
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	Score           pgtype.Numeric     `json:"score"`
+	TotalTestCases  *int32             `json:"totalTestCases"`
+	PassedTestCases *int32             `json:"passedTestCases"`
+}
+
+type SubmissionTestResult struct {
+	ID              int64              `json:"id"`
+	SubmissionID    int64              `json:"submissionId"`
+	TestCaseID      int64              `json:"testCaseId"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	CreatedAt       pgtype.Timestamptz `json:"createdAt"`
 }
 
 type Topic struct {

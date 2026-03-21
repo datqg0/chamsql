@@ -20,7 +20,9 @@ const defaultPassword = "123456" // Default password for imported users
 type IAdminUseCase interface {
 	ImportUsers(ctx context.Context, req *dto.ImportUsersRequest) (*dto.ImportResult, error)
 	GetSystemStats(ctx context.Context) (*dto.SystemStatsResponse, error)
+	ListRoles(ctx context.Context) ([]dto.RoleResponse, error)
 	ListUsers(ctx context.Context, page, pageSize int) (*dto.UserListResponse, error)
+	UpdateUser(ctx context.Context, userID int64, req *dto.UpdateUserRequest) error
 	UpdateUserRole(ctx context.Context, userID int64, role string) error
 	ToggleUserActive(ctx context.Context, userID int64, isActive bool) error
 }
@@ -134,6 +136,26 @@ func (u *adminUseCase) GetSystemStats(ctx context.Context) (*dto.SystemStatsResp
 	}, nil
 }
 
+func (u *adminUseCase) ListRoles(ctx context.Context) ([]dto.RoleResponse, error) {
+	return []dto.RoleResponse{
+		{
+			ID:          "student",
+			Name:        "Student",
+			Description: "Sinh viên - Có thể làm bài tập, tham gia kỳ thi",
+		},
+		{
+			ID:          "lecturer",
+			Name:        "Lecturer",
+			Description: "Giảng viên - Tạo bài tập, tạo kỳ thi, chấm điểm",
+		},
+		{
+			ID:          "admin",
+			Name:        "Admin",
+			Description: "Quản trị viên - Full quyền quản lý hệ thống",
+		},
+	}, nil
+}
+
 func (u *adminUseCase) ListUsers(ctx context.Context, page, pageSize int) (*dto.UserListResponse, error) {
 	offset := int32((page - 1) * pageSize)
 	limit := int32(pageSize)
@@ -168,6 +190,18 @@ func (u *adminUseCase) ListUsers(ctx context.Context, page, pageSize int) (*dto.
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+func (u *adminUseCase) UpdateUser(ctx context.Context, userID int64, req *dto.UpdateUserRequest) error {
+	_, err := u.queries.UpdateUser(ctx, models.UpdateUserParams{
+		ID:        userID,
+		Email:     req.Email,
+		Username:  req.Username,
+		FullName:  req.FullName,
+		StudentID: req.StudentID,
+		Role:      req.Role,
+	})
+	return err
 }
 
 func (u *adminUseCase) UpdateUserRole(ctx context.Context, userID int64, role string) error {

@@ -1,7 +1,8 @@
-import type { User } from '@/types/auth.types'
 
 import { create } from 'zustand'
 import { persist, devtools } from 'zustand/middleware'
+
+import type { User } from '@/types/auth.types'
 
 interface AuthState {
     token: string | null
@@ -85,6 +86,7 @@ export const useAuthStore = create<AuthState>()(
                     token: state.token,
                     user: state.user,
                     userRole: state.userRole,
+                    isAuthenticated: state.isAuthenticated,
                 }),
             }
         ),

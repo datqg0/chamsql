@@ -277,8 +277,12 @@ func (q *Queries) ListUsersByRole(ctx context.Context, arg ListUsersByRoleParams
 
 const updateUser = `-- name: UpdateUser :one
 UPDATE users SET
-    full_name = COALESCE($2, full_name),
-    avatar_url = COALESCE($3, avatar_url),
+    email = COALESCE($2, email),
+    username = COALESCE($3, username),
+    full_name = COALESCE($4, full_name),
+    student_id = COALESCE($5, student_id),
+    role = COALESCE($6, role),
+    avatar_url = COALESCE($7, avatar_url),
     updated_at = NOW()
 WHERE id = $1
 RETURNING id, email, username, password_hash, full_name, role, student_id, avatar_url, is_active, created_at, updated_at
@@ -286,12 +290,24 @@ RETURNING id, email, username, password_hash, full_name, role, student_id, avata
 
 type UpdateUserParams struct {
 	ID        int64   `json:"id"`
+	Email     *string `json:"email"`
+	Username  *string `json:"username"`
 	FullName  *string `json:"fullName"`
+	StudentID *string `json:"studentId"`
+	Role      *string `json:"role"`
 	AvatarUrl *string `json:"avatarUrl"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUser, arg.ID, arg.FullName, arg.AvatarUrl)
+	row := q.db.QueryRow(ctx, updateUser,
+		arg.ID,
+		arg.Email,
+		arg.Username,
+		arg.FullName,
+		arg.StudentID,
+		arg.Role,
+		arg.AvatarUrl,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,

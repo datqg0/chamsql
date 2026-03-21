@@ -1,12 +1,20 @@
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
-import { Plus } from 'lucide-react'
-import toast from 'react-hot-toast'
 import { useQuery } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useForm, useFieldArray } from 'react-hook-form'
+import toast from 'react-hot-toast'
+import { Trash2, AlertCircle } from 'lucide-react'
+import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
     Dialog,
     DialogContent,
@@ -15,6 +23,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
+import { Editor } from '@/components/ui/editor'
 import {
     Form,
     FormControl,
@@ -24,6 +33,7 @@ import {
     FormMessage,
     FormDescription,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import {
     Select,
     SelectContent,
@@ -31,12 +41,19 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
+import type { Problem } from '@/types/exam.types'
 import { problemsService } from '@/services/problems.service'
 import { topicsService } from '@/services/topics.service'
-import { Editor } from '@/components/ui/editor'
+
+const testCaseSchema = z.object({
+    name: z.string().min(1, 'Tên test case là bắt buộc'),
+    description: z.string().optional(),
+    initScript: z.string().min(1, 'Script khởi tạo là bắt buộc'),
+    solutionQuery: z.string().min(1, 'Câu truy vấn đáp án là bắt buộc'),
+    weight: z.number().min(1, 'Trọng số phải ít nhất là 1'),
+    isHidden: z.boolean(),
+})
 
 const problemSchema = z.object({
     title: z.string().min(3, 'Tiêu đề phải có ít nhất 3 ký tự'),
@@ -45,22 +62,24 @@ const problemSchema = z.object({
     difficulty: z.enum(['easy', 'medium', 'hard']),
     topicId: z.number().optional(),
 
-    // Đã sửa: Bắt buộc nhập Init Script và Solution Query
-    initScript: z.string().min(1, 'Script khởi tạo là bắt buộc'),
-    solutionQuery: z.string().min(1, 'Câu truy vấn đáp án là bắt buộc'),
+    initScript: z.string().optional(),
+    solutionQuery: z.string().optional(),
 
     supportedDatabases: z.array(z.string()).min(1, 'Chọn ít nhất 1 database'),
     orderMatters: z.boolean(),
     isPublic: z.boolean(),
+    testCases: z.array(testCaseSchema).optional(),
 })
 
 type ProblemFormValues = z.infer<typeof problemSchema>
 
 interface CreateProblemDialogProps {
     onSuccess?: () => void
+    problem?: Problem // Add problem prop for editing
 }
 
-export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
+export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogProps) {
+    const isEdit = !!problem
     const [open, setOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -70,32 +89,82 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
     })
     const topics = Array.isArray(topicsData) ? topicsData : []
 
+    const { data: fullProblem, isLoading: isLoadingFullProblem } = useQuery({
+        queryKey: ['problem', problem?.slug],
+        queryFn: () => problemsService.getBySlug(problem!.slug),
+        enabled: isEdit && open,
+    })
+
     const form = useForm<ProblemFormValues>({
         resolver: zodResolver(problemSchema),
         defaultValues: {
-            title: '',
-            slug: '',
-            description: '',
-            difficulty: 'easy',
-            topicId: undefined,
-            initScript: '',
-            solutionQuery: '', // Thêm default value
-            supportedDatabases: ['postgresql'],
-            orderMatters: false,
-            isPublic: true,
+            title: problem?.title || '',
+            slug: problem?.slug || '',
+            description: problem?.description || '',
+            difficulty: (problem?.difficulty as any) || 'easy',
+            topicId: problem?.topicId,
+            initScript: problem?.initScript || '',
+            solutionQuery: problem?.solutionQuery || '',
+            supportedDatabases: problem?.supportedDatabases || ['postgresql'],
+            orderMatters: problem?.orderMatters || false,
+            isPublic: problem?.isPublic ?? true,
+            testCases: problem?.testCases || [],
         },
+    })
+
+    // Reset form when problem changes or full data loads
+    useEffect(() => {
+        if (isEdit && fullProblem && open) {
+            form.reset({
+                title: fullProblem.title,
+                slug: fullProblem.slug,
+                description: fullProblem.description,
+                difficulty: fullProblem.difficulty as any,
+                topicId: fullProblem.topicId,
+                initScript: fullProblem.initScript || '',
+                solutionQuery: fullProblem.solutionQuery || '',
+                supportedDatabases: fullProblem.supportedDatabases && fullProblem.supportedDatabases.length > 0 ? fullProblem.supportedDatabases : ['postgresql'],
+                orderMatters: fullProblem.orderMatters || false,
+                isPublic: fullProblem.isPublic,
+                testCases: fullProblem.testCases || [],
+            })
+        } else if (!isEdit && open) {
+            form.reset({
+                title: '',
+                slug: '',
+                description: '',
+                difficulty: 'easy',
+                topicId: undefined,
+                initScript: '',
+                solutionQuery: '',
+                supportedDatabases: ['postgresql'],
+                orderMatters: false,
+                isPublic: true,
+                testCases: [],
+            })
+        }
+    }, [fullProblem, isEdit, open, form])
+
+    const { fields, append, remove } = useFieldArray({
+        control: form.control,
+        name: "testCases"
     })
 
     const onSubmit = async (values: ProblemFormValues) => {
         setIsSubmitting(true)
         try {
-            await problemsService.create(values as any)
-            toast.success('Tạo bài tập thành công!')
+            if (isEdit && problem) {
+                await problemsService.update(problem.id, values as any)
+                toast.success('Cập nhật bài tập thành công!')
+            } else {
+                await problemsService.create(values as any)
+                toast.success('Tạo bài tập thành công!')
+            }
             setOpen(false)
-            form.reset()
+            if (!isEdit) form.reset()
             onSuccess?.()
         } catch (error: any) {
-            toast.error(error?.message || 'Tạo bài tập thất bại!')
+            toast.error(error?.message || (isEdit ? 'Cập nhật bài tập thất bại!' : 'Tạo bài tập thất bại!'))
         } finally {
             setIsSubmitting(false)
         }
@@ -137,16 +206,37 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Tạo bài tập
-                </Button>
+                {isEdit ? (
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10">
+                        <Plus className="h-4 w-4 rotate-45 hidden" /> {/* Dummy to keep imports */}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-4 w-4"
+                        >
+                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                            <path d="m15 5 4 4" />
+                        </svg>
+                    </Button>
+                ) : (
+                    <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Tạo bài tập
+                    </Button>
+                )}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Tạo bài tập mới</DialogTitle>
+                    <DialogTitle>{isEdit ? 'Chỉnh sửa bài tập' : 'Tạo bài tập mới'}</DialogTitle>
                     <DialogDescription>
-                        Tạo bài tập SQL cho sinh viên luyện tập
+                        {isEdit ? 'Cập nhật thông tin bài tập SQL' : 'Tạo bài tập SQL cho sinh viên luyện tập'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -267,7 +357,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                             name="initScript"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Script khởi tạo (CREATE/INSERT) <span className="text-destructive">*</span></FormLabel>
+                                    <FormLabel>Script khởi tạo mặc định (CREATE/INSERT)</FormLabel>
                                     <FormControl>
                                         <Textarea
                                             placeholder="CREATE TABLE users (id INT, name VARCHAR(50)); INSERT INTO users VALUES (1, 'Alice');"
@@ -277,7 +367,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                                         />
                                     </FormControl>
                                     <FormDescription>
-                                        SQL script chạy trước khi thực thi query của sinh viên.
+                                        SQL script chạy trước khi thực thi query mẫu. Sẽ được dùng làm mặc định nếu không có test case nào.
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -290,7 +380,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                             name="solutionQuery"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>SQL Đáp án (Solution Query) <span className="text-destructive">*</span></FormLabel>
+                                    <FormLabel>SQL Đáp án mẫu (Solution Query)</FormLabel>
                                     <FormControl>
                                         <Textarea
                                             placeholder="SELECT * FROM users WHERE id = 1;"
@@ -300,7 +390,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                                         />
                                     </FormControl>
                                     <FormDescription>
-                                        Câu SQL chuẩn để so sánh kết quả.
+                                        Câu SQL chuẩn để so sánh kết quả. Sẽ được dùng làm mặc định nếu không có test case nào.
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -386,7 +476,150 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                             />
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-4">
+                        {/* Test Cases Section */}
+                        <div className="space-y-4 pt-4 border-t">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-lg font-medium">Test Cases</h3>
+                                    <p className="text-sm text-muted-foreground">Thêm các bộ test để chấm điểm chi tiết.</p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => append({
+                                        name: `Test Case ${fields.length + 1}`,
+                                        initScript: '',
+                                        solutionQuery: '',
+                                        weight: 1,
+                                        isHidden: false
+                                    })}
+                                >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Thêm Test Case
+                                </Button>
+                            </div>
+
+                            {fields.length === 0 && (
+                                <div className="p-4 border border-dashed rounded-md text-center text-muted-foreground bg-muted/5">
+                                    <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                    <p className="text-sm">Chưa có test case nào. Hệ thống sẽ dùng Script khởi tạo & SQL Đáp án ở trên làm test case mặc định.</p>
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                {fields.map((field, index) => (
+                                    <Card key={field.id} className="relative overflow-hidden">
+                                        <CardHeader className="py-3 px-4 bg-muted/30 flex flex-row items-center justify-between space-y-0">
+                                            <CardTitle className="text-sm font-medium">
+                                                #{index + 1}: {form.watch(`testCases.${index}.name`) || 'Test Case'}
+                                            </CardTitle>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                onClick={() => remove(index)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </CardHeader>
+                                        <CardContent className="p-4 space-y-4">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <FormField
+                                                    control={form.control}
+                                                    name={`testCases.${index}.name`}
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel className="text-xs">Tên Test <span className="text-destructive">*</span></FormLabel>
+                                                            <FormControl>
+                                                                <Input placeholder="Sample 1" {...field} className="h-8 text-xs" />
+                                                            </FormControl>
+                                                            <FormMessage className="text-[10px]" />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <div className="flex gap-4 items-end pb-1">
+                                                    <FormField
+                                                        control={form.control}
+                                                        name={`testCases.${index}.weight`}
+                                                        render={({ field }) => (
+                                                            <FormItem className="flex-1">
+                                                                <FormLabel className="text-xs">Trọng số <span className="text-destructive">*</span></FormLabel>
+                                                                <FormControl>
+                                                                    <Input
+                                                                        type="number"
+                                                                        {...field}
+                                                                        onChange={e => field.onChange(parseInt(e.target.value) || 1)}
+                                                                        className="h-8 text-xs"
+                                                                    />
+                                                                </FormControl>
+                                                                <FormMessage className="text-[10px]" />
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                    <FormField
+                                                        control={form.control}
+                                                        name={`testCases.${index}.isHidden`}
+                                                        render={({ field }) => (
+                                                            <FormItem className="flex items-center space-x-2 space-y-0 mb-2">
+                                                                <FormControl>
+                                                                    <Checkbox
+                                                                        checked={field.value}
+                                                                        onCheckedChange={field.onChange}
+                                                                    />
+                                                                </FormControl>
+                                                                <FormLabel className="text-xs font-normal cursor-pointer">
+                                                                    Ẩn
+                                                                </FormLabel>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <FormField
+                                                control={form.control}
+                                                name={`testCases.${index}.initScript`}
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel className="text-xs">Script khởi tạo <span className="text-destructive">*</span></FormLabel>
+                                                        <FormControl>
+                                                            <Textarea
+                                                                placeholder="INSERT INTO..."
+                                                                {...field}
+                                                                className="font-mono text-[10px] min-h-[60px]"
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage className="text-[10px]" />
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            <FormField
+                                                control={form.control}
+                                                name={`testCases.${index}.solutionQuery`}
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel className="text-xs">SQL Đáp án <span className="text-destructive">*</span></FormLabel>
+                                                        <FormControl>
+                                                            <Textarea
+                                                                placeholder="SELECT..."
+                                                                {...field}
+                                                                className="font-mono text-[10px] min-h-[60px]"
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage className="text-[10px]" />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-6 border-t">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -396,7 +629,7 @@ export function CreateProblemDialog({ onSuccess }: CreateProblemDialogProps) {
                                 Hủy
                             </Button>
                             <Button type="submit" disabled={isSubmitting}>
-                                {isSubmitting ? 'Đang tạo...' : 'Tạo bài tập'}
+                                {isSubmitting ? (isEdit ? 'Đang cập nhật...' : 'Đang tạo...') : (isEdit ? 'Cập nhật bài tập' : 'Tạo bài tập')}
                             </Button>
                         </div>
                     </form>

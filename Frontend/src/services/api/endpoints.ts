@@ -12,6 +12,8 @@ export const API_ENDPOINTS = {
         list: '/problems',
         bySlug: (slug: string) => `/problems/${slug}`,
         create: '/problems',
+        update: (id: number) => `/problems/${id}`,
+        delete: (id: number) => `/problems/${id}`,
         run: (id: number) => `/problems/${id}/run`,
         submit: (id: number) => `/problems/${id}/submit`,
     },

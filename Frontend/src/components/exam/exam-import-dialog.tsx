@@ -1,6 +1,8 @@
-import { useState, useCallback } from 'react'
 import { Upload, FileText, X, Loader2, CheckCircle2 } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import toast from 'react-hot-toast'
 
+import { Button } from '@/components/ui/button'
 import {
     Dialog,
     DialogContent,
@@ -9,24 +11,17 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { examsService } from '@/services/exams.service'
-import toast from 'react-hot-toast'
+
 
 interface ExamImportDialogProps {
     onSuccess?: () => void
     trigger?: React.ReactNode
 }
 
-const ACCEPTED_FILE_TYPES = {
-    'application/pdf': ['.pdf'],
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-    'application/msword': ['.doc'],
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-    'application/vnd.ms-excel': ['.xls'],
-}
+
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx']
 

@@ -1,38 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
-import toast from 'react-hot-toast'
-
-import { MainLayout } from '@/components/layouts/main-layout'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
-import { useAuthStore } from '@/stores/use-auth-store'
-import {
-    USE_GRADING_MOCK,
-    getMockSubmissions,
-    getMockGradingStats,
-    mockGradeSubmission,
-    mockAutoGrade,
-    MOCK_EXERCISES,
-    type Submission,
-} from '@/mocks/grading.mock'
 import {
     FileText,
     Clock,
@@ -49,6 +15,41 @@ import {
     Code,
     BarChart3,
 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
+
+import { MainLayout } from '@/components/layouts/main-layout'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import {
+    USE_GRADING_MOCK,
+    getMockSubmissions,
+    getMockGradingStats,
+    mockGradeSubmission,
+    mockAutoGrade,
+    MOCK_EXERCISES,
+    type Submission,
+} from '@/mocks/grading.mock'
+import { useAuthStore } from '@/stores/use-auth-store'
 
 function GradingPage() {
     const { isOperator, userRole } = useAuthStore()
@@ -426,6 +427,50 @@ function GradingPage() {
                                     {selectedSubmission.sqlQuery}
                                 </pre>
                             </div>
+
+                            {/* Test Case Results */}
+                            {selectedSubmission.testResults && selectedSubmission.testResults.length > 0 && (
+                                <div>
+                                    <label className="text-sm font-medium flex items-center gap-2 mb-2">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        Kết quả Test Cases ({selectedSubmission.passedTests}/{selectedSubmission.totalTests})
+                                    </label>
+                                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+                                        {selectedSubmission.testResults.map((test, idx) => (
+                                            <div
+                                                key={idx}
+                                                className={cn(
+                                                    "flex items-center justify-between p-2 rounded border text-sm",
+                                                    test.status === 'accepted' ? "bg-green-500/5 border-green-500/20" : "bg-red-500/5 border-red-500/20"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    {test.status === 'accepted' ? (
+                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                    ) : (
+                                                        <XCircle className="h-4 w-4 text-red-500" />
+                                                    )}
+                                                    <span>{test.name}</span>
+                                                    {test.errorMessage && (
+                                                        <span className="text-xs text-red-500 opacity-70">({test.errorMessage})</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <Badge variant="outline" className="text-[10px] font-normal">
+                                                        W: {test.weight}
+                                                    </Badge>
+                                                    <span className={cn(
+                                                        "font-medium",
+                                                        test.status === 'accepted' ? "text-green-600" : "text-red-600"
+                                                    )}>
+                                                        {test.score.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Grading Form */}
                             <div className="grid grid-cols-2 gap-4">

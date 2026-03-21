@@ -3,10 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"backend/configs"
+	"backend/db"
 	"backend/internals/auth/controller/dto"
 	"backend/internals/auth/repository"
 	"backend/pkgs/jwt"
@@ -14,6 +14,7 @@ import (
 	"backend/sql/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -37,12 +38,14 @@ type authUseCase struct {
 	jwtProv jwt.JWTProvider
 	cache   redis.IRedis
 	cfg     *configs.Config
+	queries *models.Queries
 }
 
 func NewAuthUseCase(
 	repo repository.IAuthRepository,
 	jwtProv jwt.JWTProvider,
 	cache redis.IRedis,
+	database *db.Database, // Added database dependency
 	cfg *configs.Config,
 ) IAuthUseCase {
 	return &authUseCase{
@@ -50,6 +53,7 @@ func NewAuthUseCase(
 		jwtProv: jwtProv,
 		cache:   cache,
 		cfg:     cfg,
+		queries: models.New(database.GetPool()),
 	}
 }
 
@@ -121,60 +125,68 @@ func (u *authUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 }
 
 func (u *authUseCase) RefreshToken(ctx context.Context, req *dto.RefreshTokenRequest) (*dto.AuthResponse, error) {
-	// Check refresh token in Redis
-	key := fmt.Sprintf("refresh_token:%s", req.RefreshToken)
-	var userID int64
-	err := u.cache.Get(key, &userID)
+	// 1. Get token from DB
+	storedToken, err := u.queries.GetRefreshToken(ctx, req.RefreshToken)
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
 
-	// Get user
-	user, err := u.repo.GetUserByID(ctx, userID)
+	// 2. Check if revoked
+	if storedToken.Revoked != nil && *storedToken.Revoked {
+		// Security: If a revoked token is used, it might be a theft.
+		// We could revoke all user sessions here for safety.
+		// u.queries.RevokeAllUserTokens(ctx, storedToken.UserID)
+		return nil, ErrInvalidToken
+	}
+
+	// 3. Check if expired
+	if storedToken.ExpiresAt.Time.Before(time.Now()) {
+		return nil, ErrInvalidToken
+	}
+
+	// 4. Get user
+	user, err := u.repo.GetUserByID(ctx, storedToken.UserID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if user is still active
+	// 5. Check if user is active
 	if !isUserActive(user) {
 		return nil, ErrUserNotActive
 	}
 
-	// Rotate token: delete old, create new
-	u.cache.Remove(key)
+	// 6. Rotate token:
+	// Revoke the old token
+	err = u.queries.RevokeRefreshToken(ctx, req.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
 
+	// Generate new pair
 	return u.generateAuthResponse(ctx, user)
 }
 
 func (u *authUseCase) Logout(ctx context.Context, tokenString string) error {
-	// Validate token format & signature
-	claims, err := u.jwtProv.ValidateToken(tokenString)
-	if err != nil {
-		return err
-	}
-
-	// Calculate remaining time for expiration
-	expFloat, ok := (*claims)["exp"].(float64)
-	if !ok {
-		return ErrInvalidToken
-	}
-	expTime := time.Unix(int64(expFloat), 0)
-	remainingTime := time.Until(expTime)
-
-	if remainingTime <= 0 {
-		return nil // Already expired
-	}
-
-	// Add to Redis blacklist
-	if u.cache != nil && u.cache.IsConnected() {
-		blacklistKey := fmt.Sprintf("blacklist:%s", tokenString)
-		err := u.cache.SetWithExpiration(blacklistKey, "revoked", remainingTime)
-		if err != nil {
-			return fmt.Errorf("failed to blacklist token: %w", err)
-		}
-	}
-
-	return nil
+	// With stateless access tokens, we can't really "revoke" them without a blacklist.
+	// But we CAN revoke the refresh token if provided. 
+	// However, the Logout endpoint usually receives the Access Token in Authorization header.
+	// If the frontend also sends the refresh token (e.g. via cookie), we can revoke it.
+	
+	// Since this method signature only takes a "tokenString" (which is typically the access token from the handler),
+	// and we are moving to HttpOnly cookies for refresh tokens, the Handler should handle reading the cookie
+	// and passing the refresh token to a Revoke method.
+	
+	// BUT, `IAuthUseCase.Logout` signature in this codebase seems to have been designed for Access Token blacklisting (Redis).
+	// We will repurpose it or add a new method `RevokeRefreshToken`.
+	
+	// For now, let's assume the Handler will call a new method or we change this one.
+	// Let's implement a specific RevokeRefreshToken method in the interface if possible, 
+	// or just overload this one if `tokenString` is the refresh token.
+	
+	// Given the interface `Logout(ctx, token string) error`, let's assume `token` here IS the refresh token 
+	// passed from the handler (extracted from cookie).
+	
+	return u.queries.RevokeRefreshToken(ctx, tokenString)
 }
 
 func (u *authUseCase) generateAuthResponse(ctx context.Context, user *models.User) (*dto.AuthResponse, error) {
@@ -186,11 +198,16 @@ func (u *authUseCase) generateAuthResponse(ctx context.Context, user *models.Use
 
 	// Generate refresh token (UUID)
 	refreshToken := uuid.New().String()
+	expiresAt := time.Now().Add(u.cfg.RefreshTokenDuration)
 
-	// Store refresh token in Redis
-	if u.cache != nil && u.cache.IsConnected() {
-		key := fmt.Sprintf("refresh_token:%s", refreshToken)
-		_ = u.cache.SetWithExpiration(key, user.ID, u.cfg.RefreshTokenDuration)
+	// Store refresh token in DB
+	_, err = u.queries.CreateRefreshToken(ctx, models.CreateRefreshTokenParams{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: pgTime(expiresAt),
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &dto.AuthResponse{
@@ -208,6 +225,17 @@ func (u *authUseCase) generateAuthResponse(ctx context.Context, user *models.Use
 		},
 	}, nil
 }
+
+// Helper for pgtype
+func pgTime(t time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{
+		Time:  t,
+		Valid: true,
+	}
+}
+
+
+
 
 // Helper functions
 func stringPtr(s string) *string {

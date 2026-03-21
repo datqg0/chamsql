@@ -1,16 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import { createFileRoute } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
-
-import { MainLayout } from '@/components/layouts/main-layout'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { useAuthStore } from '@/stores/use-auth-store'
-import { examsService } from '@/services/exams.service'
-import type { Exam } from '@/types/exam.types'
 import {
     Calendar,
     Clock,
@@ -20,9 +10,19 @@ import {
     ArrowLeft,
     Settings,
 } from 'lucide-react'
-import { CreateExamDialog } from '@/components/exams/create-exam-dialog'
-import { AddProblemsDialog } from '@/components/exams/add-problems-dialog'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+
 import { AddParticipantsDialog } from '@/components/exams/add-participants-dialog'
+import { AddProblemsDialog } from '@/components/exams/add-problems-dialog'
+import { CreateExamDialog } from '@/components/exams/create-exam-dialog'
+import { MainLayout } from '@/components/layouts/main-layout'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { examsService } from '@/services/exams.service'
+import { useAuthStore } from '@/stores/use-auth-store'
+import type { Exam } from '@/types/exam.types'
 
 function ExamsPage() {
     const navigate = useNavigate()

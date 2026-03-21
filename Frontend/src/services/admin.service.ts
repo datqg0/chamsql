@@ -1,8 +1,8 @@
+import type { User } from '@/types/auth.types'
 import type {
     AdminStats,
     ImportUsersRequest,
 } from '@/types/exam.types'
-import type { User } from '@/types/auth.types'
 
 import { api } from './api/client'
 import { API_ENDPOINTS } from './api/endpoints'

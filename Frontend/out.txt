@@ -1,0 +1,15 @@
+npm warn Unknown project config "store-dir". This will stop working in the next major version of npm.
+npm warn Unknown project config "ignore-workspace-root-check". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+src/components/exam/exam-import-dialog.tsx(24,7): error TS6133: 'ACCEPTED_FILE_TYPES' is declared but its value is never read.
+src/components/ui/editor.tsx(16,43): error TS6133: 'placeholder' is declared but its value is never read.
+src/lib/sql-checker.ts(60,68): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/mocks/grading.mock.ts(344,23): error TS6133: 'exercise' is declared but its value is never read.
+src/routes/practice.tsx(53,12): error TS6133: 'selectedTopic' is declared but its value is never read.
+src/routes/practice.tsx(88,11): error TS6133: 'handleBackToTopics' is declared but its value is never read.
+src/routes/submissions.tsx(177,11): error TS6133: 'handleViewResult' is declared but its value is never read.
+src/routes/submissions.tsx(730,70): error TS2339: Property 'examTitle' does not exist on type 'Submission'.
+src/routes/submissions.tsx(730,99): error TS2339: Property 'examId' does not exist on type 'Submission'.
+src/routes/submissions.tsx(743,66): error TS2339: Property 'createdAt' does not exist on type 'Submission'.
+src/routes/submissions.tsx(746,94): error TS2339: Property 'createdAt' does not exist on type 'Submission'.
+src/services/submissions.service.ts(2,5): error TS6196: 'Submission' is declared but never used.

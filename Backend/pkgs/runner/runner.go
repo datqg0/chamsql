@@ -354,20 +354,22 @@ func (r *runner) Compare(expected, actual *QueryResult, orderMatters bool) *Comp
 		return result
 	}
 
-	// Clone rows for sorting to avoid mutating original result
+	// Clone rows for comparison
 	expRows := cloneRows(expected.Rows)
 	actRows := cloneRows(actual.Rows)
 
-	// ALWAYS Sort rows by string representation (ignoring orderMatters flag)
-	sortRows(expRows)
-	sortRows(actRows)
+	// Sort rows only if order does not matter
+	if !orderMatters {
+		sortRows(expRows)
+		sortRows(actRows)
+	}
 
-	// Compare sorted rows
+	// Compare rows
 	if !reflect.DeepEqual(expRows, actRows) {
 		result.IsCorrect = false
 		result.Message = "Result mismatch (values do not match)"
 		
-		// Find first mismatch for detail (optional, simplified)
+		// Find first mismatch for detail
 		for i := range expRows {
 			if i >= len(actRows) || !reflect.DeepEqual(expRows[i], actRows[i]) {
 				result.MismatchIndex = i

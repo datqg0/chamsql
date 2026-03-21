@@ -57,7 +57,7 @@ export function checkSQLSyntax(
                 line: lineMatch ? parseInt(lineMatch[1], 10) : undefined,
                 column: columnMatch ? parseInt(columnMatch[1], 10) : undefined,
                 expected: expectedMatch
-                    ? expectedMatch[1].split(/,\s*or\s*|,\s*/).map(s => s.trim())
+                    ? expectedMatch[1].split(/,\s*or\s*|,\s*/).map((s: string) => s.trim())
                     : undefined,
             },
         }

@@ -17,6 +17,7 @@ type Querier interface {
 	// EXAM PROBLEMS
 	// =============================================
 	AddProblemToExam(ctx context.Context, arg AddProblemToExamParams) (ExamProblem, error)
+	CleanupExpiredTokens(ctx context.Context) error
 	CountCorrectSubmissions(ctx context.Context, userID int64) (int64, error)
 	CountProblems(ctx context.Context) (int64, error)
 	CountProblemsByDifficulty(ctx context.Context) ([]CountProblemsByDifficultyRow, error)
@@ -34,12 +35,17 @@ type Querier interface {
 	// =============================================
 	CreateExamSubmission(ctx context.Context, arg CreateExamSubmissionParams) (ExamSubmission, error)
 	CreateProblem(ctx context.Context, arg CreateProblemParams) (Problem, error)
+	CreateProblemTestCase(ctx context.Context, arg CreateProblemTestCaseParams) (ProblemTestCase, error)
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (Submission, error)
+	CreateSubmissionTestResult(ctx context.Context, arg CreateSubmissionTestResultParams) (SubmissionTestResult, error)
 	CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeactivateUser(ctx context.Context, id int64) error
+	DeleteAllProblemTestCases(ctx context.Context, problemID int64) error
 	DeleteExam(ctx context.Context, id int64) error
 	DeleteProblem(ctx context.Context, id int64) error
+	DeleteProblemTestCase(ctx context.Context, id int64) error
 	DeleteTopic(ctx context.Context, id int32) error
 	EmailExists(ctx context.Context, email string) (bool, error)
 	GetExamByID(ctx context.Context, id int64) (GetExamByIDRow, error)
@@ -49,7 +55,9 @@ type Querier interface {
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
 	GetProblemByID(ctx context.Context, id int64) (Problem, error)
 	GetProblemBySlug(ctx context.Context, slug string) (Problem, error)
+	GetProblemTestCaseByID(ctx context.Context, id int64) (ProblemTestCase, error)
 	GetProblemWithUserProgress(ctx context.Context, arg GetProblemWithUserProgressParams) (GetProblemWithUserProgressRow, error)
+	GetRefreshToken(ctx context.Context, token string) (RefreshToken, error)
 	GetSubmissionByID(ctx context.Context, id int64) (GetSubmissionByIDRow, error)
 	GetTopicByID(ctx context.Context, id int32) (Topic, error)
 	GetTopicBySlug(ctx context.Context, slug string) (Topic, error)
@@ -64,12 +72,14 @@ type Querier interface {
 	ListExamProblems(ctx context.Context, examID int64) ([]ListExamProblemsRow, error)
 	ListExams(ctx context.Context, arg ListExamsParams) ([]ListExamsRow, error)
 	ListExamsByLecturer(ctx context.Context, arg ListExamsByLecturerParams) ([]ListExamsByLecturerRow, error)
+	ListProblemTestCases(ctx context.Context, problemID int64) ([]ProblemTestCase, error)
 	ListProblems(ctx context.Context, arg ListProblemsParams) ([]ListProblemsRow, error)
 	ListProblemsByDifficulty(ctx context.Context, arg ListProblemsByDifficultyParams) ([]ListProblemsByDifficultyRow, error)
 	ListProblemsByTopic(ctx context.Context, arg ListProblemsByTopicParams) ([]ListProblemsByTopicRow, error)
 	ListPublicExams(ctx context.Context, arg ListPublicExamsParams) ([]ListPublicExamsRow, error)
 	ListRecentAttempts(ctx context.Context, arg ListRecentAttemptsParams) ([]ListRecentAttemptsRow, error)
 	ListSolvedProblems(ctx context.Context, arg ListSolvedProblemsParams) ([]ListSolvedProblemsRow, error)
+	ListSubmissionTestResults(ctx context.Context, submissionID int64) ([]ListSubmissionTestResultsRow, error)
 	ListTopics(ctx context.Context) ([]Topic, error)
 	ListUserExamSubmissions(ctx context.Context, arg ListUserExamSubmissionsParams) ([]ListUserExamSubmissionsRow, error)
 	ListUserExams(ctx context.Context, userID int64) ([]ListUserExamsRow, error)
@@ -80,6 +90,8 @@ type Querier interface {
 	MarkProblemSolved(ctx context.Context, arg MarkProblemSolvedParams) (UserProgress, error)
 	RemoveParticipant(ctx context.Context, arg RemoveParticipantParams) error
 	RemoveProblemFromExam(ctx context.Context, arg RemoveProblemFromExamParams) error
+	RevokeAllUserTokens(ctx context.Context, userID int64) error
+	RevokeRefreshToken(ctx context.Context, token string) error
 	StartExam(ctx context.Context, arg StartExamParams) (ExamParticipant, error)
 	SubmitExam(ctx context.Context, arg SubmitExamParams) (ExamParticipant, error)
 	UpdateExam(ctx context.Context, arg UpdateExamParams) (Exam, error)
@@ -87,6 +99,8 @@ type Querier interface {
 	UpdateExamStatus(ctx context.Context, arg UpdateExamStatusParams) (Exam, error)
 	UpdateParticipantScore(ctx context.Context, arg UpdateParticipantScoreParams) (ExamParticipant, error)
 	UpdateProblem(ctx context.Context, arg UpdateProblemParams) (Problem, error)
+	UpdateProblemTestCase(ctx context.Context, arg UpdateProblemTestCaseParams) (ProblemTestCase, error)
+	UpdateSubmissionScore(ctx context.Context, arg UpdateSubmissionScoreParams) error
 	UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (User, error)

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { MainLayout } from '@/components/layouts/main-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,16 +8,22 @@ import { useAuthStore } from '@/stores/use-auth-store'
 function DashboardPage() {
     const navigate = useNavigate()
     const { user, isOperator, isAuthenticated, userRole } = useAuthStore()
+    const [isHydrated, setIsHydrated] = useState(false)
 
-    // Redirect to login if not authenticated
+    // Wait for Zustand to hydrate
     useEffect(() => {
-        if (!isAuthenticated) {
+        setIsHydrated(true)
+    }, [])
+
+    // Redirect to login if not authenticated (after hydration)
+    useEffect(() => {
+        if (isHydrated && !isAuthenticated) {
             navigate({ to: '/' })
         }
-    }, [isAuthenticated, navigate])
+    }, [isHydrated, isAuthenticated, navigate])
 
-    // Show loading while checking auth
-    if (!isAuthenticated) {
+    // Show loading while hydrating or checking auth
+    if (!isHydrated || !isAuthenticated) {
         return (
             <MainLayout>
                 <div className="flex items-center justify-center py-12">
@@ -113,5 +119,3 @@ function DashboardPage() {
 export const Route = createFileRoute('/dashboard')({
     component: DashboardPage,
 })
-
-
