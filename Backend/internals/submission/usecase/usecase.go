@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"backend/configs"
 	"backend/internals/problem/repository"
 	"backend/internals/submission/controller/dto"
+	"backend/internals/submission/domain"
 	submissionRepo "backend/internals/submission/repository"
 	"backend/pkgs/runner"
 	"backend/sql/models"
@@ -29,6 +31,7 @@ type ISubmissionUseCase interface {
 
 type submissionUseCase struct {
 	submissionRepo submissionRepo.ISubmissionRepository
+	outboxRepo     submissionRepo.ISubmissionOutboxRepository
 	problemRepo    repository.IProblemRepository
 	runner         runner.Runner
 	cfg            *configs.Config
@@ -36,12 +39,14 @@ type submissionUseCase struct {
 
 func NewSubmissionUseCase(
 	subRepo submissionRepo.ISubmissionRepository,
+	outboxRepo submissionRepo.ISubmissionOutboxRepository,
 	probRepo repository.IProblemRepository,
 	queryRunner runner.Runner,
 	cfg *configs.Config,
 ) ISubmissionUseCase {
 	return &submissionUseCase{
 		submissionRepo: subRepo,
+		outboxRepo:     outboxRepo,
 		problemRepo:    probRepo,
 		runner:         queryRunner,
 		cfg:            cfg,
@@ -100,13 +105,13 @@ func (u *submissionUseCase) Submit(ctx context.Context, userID, problemID int64,
 	testCases, _ := u.problemRepo.ListTestCases(ctx, problemID)
 
 	var (
-		totalWeight      int32
-		passedWeight     int32
-		passedTests      int
-		finalStatus      = "accepted"
-		totalExecTime    int64
-		testResults      []dto.TestResultResponse
-		firstError       string
+		totalWeight   int32
+		passedWeight  int32
+		passedTests   int
+		finalStatus   = "accepted"
+		totalExecTime int64
+		testResults   []dto.TestResultResponse
+		firstError    string
 	)
 
 	// If no test cases, use problem's default init_script and solution_query as the single test case
@@ -184,7 +189,7 @@ func (u *submissionUseCase) Submit(ctx context.Context, userID, problemID int64,
 	if passedTests < len(testCases) && finalStatus == "accepted" {
 		finalStatus = "wrong_answer"
 	}
-	
+
 	score := 0.0
 	if totalWeight > 0 {
 		score = (float64(passedWeight) / float64(totalWeight)) * 10.0 // Scale to 10
@@ -225,17 +230,42 @@ func (u *submissionUseCase) Submit(ctx context.Context, userID, problemID int64,
 		})
 	}
 
+	// Publish submission.created or submission.graded event
+	eventType := domain.EventTypeSubmissionCreated
+	if finalStatus != "pending" {
+		eventType = domain.EventTypeSubmissionGraded
+	}
+
+	eventEnvelope := domain.NewSubmissionEventEnvelope(
+		eventType,
+		submission.ID,
+		domain.SubmissionEventPayload{
+			SubmissionID: submission.ID,
+			UserID:       userID,
+			Status:       finalStatus,
+			Score:        score,
+			SubmittedAt:  time.Now().UTC(),
+		},
+		"", // correlation ID can be empty for new events
+	)
+
+	if u.outboxRepo != nil {
+		if err := u.outboxRepo.PublishEvent(ctx, "chamsql-submission-events-v1", eventEnvelope); err != nil {
+			// Log error but don't fail the request
+		}
+	}
+
 	return &dto.SubmitQueryResponse{
-		ID:             submission.ID,
-		IsCorrect:      isCorrectFinal,
-		Status:         finalStatus,
-		ExecutionMs:    totalExecTime,
-		Score:          score,
-		TotalTests:     len(testCases),
-		PassedTests:    passedTests,
-		Message:        fmt.Sprintf("Passed %d/%d test cases", passedTests, len(testCases)),
-		Error:          firstError,
-		TestResults:    testResults,
+		ID:          submission.ID,
+		IsCorrect:   isCorrectFinal,
+		Status:      finalStatus,
+		ExecutionMs: totalExecTime,
+		Score:       score,
+		TotalTests:  len(testCases),
+		PassedTests: passedTests,
+		Message:     fmt.Sprintf("Passed %d/%d test cases", passedTests, len(testCases)),
+		Error:       firstError,
+		TestResults: testResults,
 	}, nil
 }
 
@@ -267,7 +297,7 @@ func (u *submissionUseCase) ListByUser(ctx context.Context, userID int64, page, 
 			e := int(*s.ExecutionTimeMs)
 			execTime = &e
 		}
-		
+
 		var score float64
 		_ = s.Score.Scan(&score)
 

@@ -30,6 +30,11 @@ type Config struct {
 	QueryTimeoutSeconds int `mapstructure:"QUERY_TIMEOUT_SECONDS"`
 	QueryMaxRows        int `mapstructure:"QUERY_MAX_ROWS"`
 
+	// Kafka
+	KafkaEnabled  bool   `mapstructure:"KAFKA_ENABLED"`
+	KafkaBrokers  string `mapstructure:"KAFKA_BROKERS"`
+	KafkaClientID string `mapstructure:"KAFKA_CLIENT_ID"`
+
 	// Redis
 	RedisURI      string `mapstructure:"REDIS_URI"`
 	RedisPassword string `mapstructure:"REDIS_PASSWORD"`
@@ -74,6 +79,9 @@ func LoadConfig() *Config {
 		SandboxSQLServerURI:  viper.GetString("SANDBOX_SQLSERVER_URI"),
 		QueryTimeoutSeconds:  viper.GetInt("QUERY_TIMEOUT_SECONDS"),
 		QueryMaxRows:         viper.GetInt("QUERY_MAX_ROWS"),
+		KafkaEnabled:         viper.GetBool("KAFKA_ENABLED"),
+		KafkaBrokers:         viper.GetString("KAFKA_BROKERS"),
+		KafkaClientID:        viper.GetString("KAFKA_CLIENT_ID"),
 		RedisURI:             viper.GetString("REDIS_URI"),
 		RedisPassword:        viper.GetString("REDIS_PASSWORD"),
 		RedisDB:              viper.GetInt("REDIS_DB"),

@@ -80,3 +80,79 @@ type RoleResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
+
+// =============================================
+// PERMISSION MANAGEMENT DTOs
+// =============================================
+
+// GrantRoleRequest - Assign role to user
+type GrantRoleRequest struct {
+	RoleID int32 `json:"roleId" binding:"required"`
+}
+
+// RevokeRoleRequest - Remove role from user
+type RevokeRoleRequest struct {
+	RoleID int32 `json:"roleId" binding:"required"`
+}
+
+// UserRoleResponse - User and their assigned roles
+type UserRoleResponse struct {
+	ID    int64        `json:"id"`
+	Email string       `json:"email"`
+	Roles []RoleDetail `json:"roles"`
+}
+
+// RoleDetail - Role information with metadata
+type RoleDetail struct {
+	ID          int32  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	AssignedAt  string `json:"assignedAt"`
+}
+
+// PermissionDetail - Permission information
+type PermissionDetail struct {
+	ID           int32  `json:"id"`
+	ResourceType string `json:"resourceType"`
+	Action       string `json:"action"`
+	Description  string `json:"description"`
+}
+
+// RolePermissionsResponse - Show all permissions assigned to a role
+type RolePermissionsResponse struct {
+	RoleID      int32              `json:"roleId"`
+	RoleName    string             `json:"roleName"`
+	Permissions []PermissionDetail `json:"permissions"`
+}
+
+// GrantPermissionRequest - Assign permission to role
+type GrantPermissionRequest struct {
+	PermissionID int32 `json:"permissionId" binding:"required"`
+}
+
+// ListPermissionsResponse - Paginated list of permissions
+type ListPermissionsResponse struct {
+	Permissions []PermissionDetail `json:"permissions"`
+	Total       int64              `json:"total"`
+}
+
+// AuditLogEntry - Single entry in permission audit log
+type AuditLogEntry struct {
+	ID               int64  `json:"id"`
+	Action           string `json:"action"` // role_assigned, role_revoked, permission_granted, etc
+	TargetUserID     *int64 `json:"targetUserId,omitempty"`
+	TargetRoleID     *int32 `json:"targetRoleId,omitempty"`
+	TargetResourceID *int64 `json:"targetResourceId,omitempty"`
+	PerformedBy      int64  `json:"performedBy"`
+	PerformedByEmail string `json:"performedByEmail"`
+	Details          string `json:"details,omitempty"` // JSON string
+	CreatedAt        string `json:"createdAt"`
+}
+
+// AuditLogResponse - Paginated audit log
+type AuditLogResponse struct {
+	Logs  []AuditLogEntry `json:"logs"`
+	Total int64           `json:"total"`
+	Page  int             `json:"page"`
+	Size  int             `json:"pageSize"`
+}

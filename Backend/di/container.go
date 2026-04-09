@@ -9,8 +9,11 @@ import (
 	"backend/db"
 	httpServer "backend/internals/server/http"
 	"backend/pkgs/jwt"
+	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
+	kafka_config "backend/pkgs/messaging/kafka"
 	"backend/pkgs/minio"
+	"backend/pkgs/permissions"
 	"backend/pkgs/rabbitmq"
 	"backend/pkgs/redis"
 	"backend/pkgs/runner"
@@ -34,9 +37,12 @@ func NewContainer() (*Container, error) {
 		provideDatabase,
 		provideRedis,
 		provideRabbitMQ,
+		provideKafkaRegistry,
+		provideKafka,
 		provideMinio,
 		provideJWTProvider,
 		provideRunner,
+		providePermissionService,
 
 		// Server
 		httpServer.NewServer,
@@ -120,6 +126,35 @@ func provideRunner(cfg *configs.Config) runner.Runner {
 		return nil
 	}
 	return r
+}
+
+func provideKafkaRegistry() *kafka.Registry {
+	registry := kafka.NewRegistry()
+	kafka_config.RegisterSystemTopics(registry)
+	logger.Info("Kafka topic registry initialized: %d topics", registry.Len())
+	return registry
+}
+
+func provideKafka(cfg *configs.Config) kafka.IKafka {
+	if cfg == nil || !cfg.KafkaEnabled {
+		return nil
+	}
+
+	client, err := kafka.NewKafka(kafka.Config{
+		Enabled:  cfg.KafkaEnabled,
+		Brokers:  kafka.ParseBrokers(cfg.KafkaBrokers),
+		ClientID: cfg.KafkaClientID,
+	})
+	if err != nil {
+		logger.Warn("Kafka not connected: %v", err)
+		return nil
+	}
+
+	return client
+}
+
+func providePermissionService(database *db.Database) permissions.PermissionService {
+	return permissions.NewPermissionService(database)
 }
 
 // Invoke runs a function with dependencies injected

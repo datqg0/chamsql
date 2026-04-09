@@ -8,6 +8,7 @@ import (
 
 	"backend/configs"
 	"backend/internals/exam/controller/dto"
+	"backend/internals/exam/domain"
 	examRepo "backend/internals/exam/repository"
 	problemRepo "backend/internals/problem/repository"
 	"backend/pkgs/runner"
@@ -57,6 +58,7 @@ type IExamUseCase interface {
 type examUseCase struct {
 	examRepo    examRepo.IExamRepository
 	problemRepo problemRepo.IProblemRepository
+	outboxRepo  examRepo.IExamOutboxRepository
 	runner      runner.Runner
 	cfg         *configs.Config
 }
@@ -64,12 +66,14 @@ type examUseCase struct {
 func NewExamUseCase(
 	examRepo examRepo.IExamRepository,
 	problemRepo problemRepo.IProblemRepository,
+	outboxRepo examRepo.IExamOutboxRepository,
 	queryRunner runner.Runner,
 	cfg *configs.Config,
 ) IExamUseCase {
 	return &examUseCase{
 		examRepo:    examRepo,
 		problemRepo: problemRepo,
+		outboxRepo:  outboxRepo,
 		runner:      queryRunner,
 		cfg:         cfg,
 	}
@@ -97,6 +101,29 @@ func (u *examUseCase) Create(ctx context.Context, userID int64, req *dto.CreateE
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Publish exam.created event
+	eventEnvelope := domain.NewExamEventEnvelope(
+		domain.EventTypeExamCreated,
+		exam.ID,
+		domain.ExamEventPayload{
+			ExamID:          exam.ID,
+			Title:           exam.Title,
+			CreatedBy:       userID,
+			Status:          ptrToStr(exam.Status),
+			StartTime:       exam.StartTime.Time,
+			EndTime:         exam.EndTime.Time,
+			DurationMinutes: exam.DurationMinutes,
+		},
+		"", // correlation ID can be empty for new events
+	)
+
+	if u.outboxRepo != nil {
+		if err := u.outboxRepo.PublishEvent(ctx, "chamsql-exam-events-v1", eventEnvelope); err != nil {
+			// Log error but don't fail the request - event will be retried by outbox processor
+			// In production, you might want to track this
+		}
 	}
 
 	return toExamResponseFromModel(exam), nil
@@ -415,6 +442,26 @@ func (u *examUseCase) StartExam(ctx context.Context, userID int64, examID int64)
 		if err != nil {
 			return nil, err
 		}
+
+		// Publish exam.started event
+		eventEnvelope := domain.NewExamEventEnvelope(
+			domain.EventTypeExamStarted,
+			examID,
+			domain.ExamEventPayload{
+				ExamID:          examID,
+				UserID:          userID,
+				Title:           exam.Title,
+				Status:          "in_progress",
+				DurationMinutes: exam.DurationMinutes,
+			},
+			"", // correlation ID can be empty for new events
+		)
+
+		if u.outboxRepo != nil {
+			if err := u.outboxRepo.PublishEvent(ctx, "chamsql-exam-events-v1", eventEnvelope); err != nil {
+				// Log error but don't fail the request
+			}
+		}
 	}
 
 	// Get problems
@@ -561,6 +608,26 @@ func (u *examUseCase) FinishExam(ctx context.Context, userID int64, examID int64
 	_, err = u.examRepo.SubmitExam(ctx, examID, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Publish exam.finished event
+	eventEnvelope := domain.NewExamEventEnvelope(
+		domain.EventTypeExamFinished,
+		examID,
+		domain.ExamEventPayload{
+			ExamID: examID,
+			UserID: userID,
+			Title:  exam.Title,
+			Status: "submitted",
+			Score:  numericToFloat(participant.TotalScore),
+		},
+		"", // correlation ID can be empty for new events
+	)
+
+	if u.outboxRepo != nil {
+		if err := u.outboxRepo.PublishEvent(ctx, "chamsql-exam-events-v1", eventEnvelope); err != nil {
+			// Log error but don't fail the request
+		}
 	}
 
 	return &dto.ExamResultResponse{

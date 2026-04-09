@@ -6,6 +6,8 @@ package models
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
@@ -17,6 +19,9 @@ type Querier interface {
 	// EXAM PROBLEMS
 	// =============================================
 	AddProblemToExam(ctx context.Context, arg AddProblemToExamParams) (ExamProblem, error)
+	CheckResourceAccess(ctx context.Context, arg CheckResourceAccessParams) (bool, error)
+	CheckResourceOwner(ctx context.Context, arg CheckResourceOwnerParams) (bool, error)
+	CheckUserHasPermission(ctx context.Context, arg CheckUserHasPermissionParams) (bool, error)
 	CleanupExpiredTokens(ctx context.Context) error
 	CountCorrectSubmissions(ctx context.Context, userID int64) (int64, error)
 	CountProblems(ctx context.Context) (int64, error)
@@ -27,6 +32,10 @@ type Querier interface {
 	CountUsers(ctx context.Context) (int64, error)
 	CountUsersByRole(ctx context.Context, role string) (int64, error)
 	// =============================================
+	// AUDIT LOG QUERIES
+	// =============================================
+	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (PermissionAuditLog, error)
+	// =============================================
 	// EXAMS
 	// =============================================
 	CreateExam(ctx context.Context, arg CreateExamParams) (Exam, error)
@@ -34,9 +43,15 @@ type Querier interface {
 	// EXAM SUBMISSIONS
 	// =============================================
 	CreateExamSubmission(ctx context.Context, arg CreateExamSubmissionParams) (ExamSubmission, error)
+	CreatePermission(ctx context.Context, arg CreatePermissionParams) (Permission, error)
 	CreateProblem(ctx context.Context, arg CreateProblemParams) (Problem, error)
 	CreateProblemTestCase(ctx context.Context, arg CreateProblemTestCaseParams) (ProblemTestCase, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
+	// =============================================
+	// RESOURCE ACCESS CONTROL QUERIES
+	// =============================================
+	CreateResourceAccess(ctx context.Context, arg CreateResourceAccessParams) (ResourceAccessControl, error)
+	CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (Submission, error)
 	CreateSubmissionTestResult(ctx context.Context, arg CreateSubmissionTestResultParams) (SubmissionTestResult, error)
 	CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic, error)
@@ -44,40 +59,73 @@ type Querier interface {
 	DeactivateUser(ctx context.Context, id int64) error
 	DeleteAllProblemTestCases(ctx context.Context, problemID int64) error
 	DeleteExam(ctx context.Context, id int64) error
+	DeletePermission(ctx context.Context, id int32) error
 	DeleteProblem(ctx context.Context, id int64) error
 	DeleteProblemTestCase(ctx context.Context, id int64) error
+	DeleteRole(ctx context.Context, id int32) error
 	DeleteTopic(ctx context.Context, id int32) error
 	EmailExists(ctx context.Context, email string) (bool, error)
+	FetchPendingEvents(ctx context.Context, limit int32) ([]FetchPendingEventsRow, error)
+	GetAuditLog(ctx context.Context, arg GetAuditLogParams) ([]PermissionAuditLog, error)
 	GetExamByID(ctx context.Context, id int64) (GetExamByIDRow, error)
 	GetExamResults(ctx context.Context, examID int64) ([]GetExamResultsRow, error)
 	GetExamSubmission(ctx context.Context, arg GetExamSubmissionParams) (ExamSubmission, error)
 	GetLatestSubmission(ctx context.Context, arg GetLatestSubmissionParams) (Submission, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
+	// =============================================
+	// PERMISSIONS QUERIES
+	// =============================================
+	GetPermissionByID(ctx context.Context, id int32) (Permission, error)
 	GetProblemByID(ctx context.Context, id int64) (Problem, error)
 	GetProblemBySlug(ctx context.Context, slug string) (Problem, error)
 	GetProblemTestCaseByID(ctx context.Context, id int64) (ProblemTestCase, error)
 	GetProblemWithUserProgress(ctx context.Context, arg GetProblemWithUserProgressParams) (GetProblemWithUserProgressRow, error)
 	GetRefreshToken(ctx context.Context, token string) (RefreshToken, error)
+	GetResourceAccess(ctx context.Context, arg GetResourceAccessParams) ([]ResourceAccessControl, error)
+	// =============================================
+	// ROLES QUERIES
+	// =============================================
+	GetRoleByID(ctx context.Context, id int32) (Role, error)
+	GetRoleByName(ctx context.Context, name string) (Role, error)
+	// =============================================
+	// ROLE PERMISSIONS QUERIES
+	// =============================================
+	GetRolePermissions(ctx context.Context, roleID int32) ([]Permission, error)
 	GetSubmissionByID(ctx context.Context, id int64) (GetSubmissionByIDRow, error)
 	GetTopicByID(ctx context.Context, id int32) (Topic, error)
 	GetTopicBySlug(ctx context.Context, slug string) (Topic, error)
+	GetUserAuditLog(ctx context.Context, arg GetUserAuditLogParams) ([]PermissionAuditLog, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByIdentifier(ctx context.Context, email string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	GetUserProgress(ctx context.Context, arg GetUserProgressParams) (UserProgress, error)
+	GetUserResourceAccess(ctx context.Context, arg GetUserResourceAccessParams) ([]ResourceAccessControl, error)
+	GetUserRoleIDs(ctx context.Context, userID int32) ([]int32, error)
+	// =============================================
+	// USER ROLES QUERIES
+	// =============================================
+	GetUserRoles(ctx context.Context, userID int32) ([]Role, error)
 	GetUserStats(ctx context.Context, userID int64) (GetUserStatsRow, error)
 	GetUserStatsByDifficulty(ctx context.Context, userID int64) ([]GetUserStatsByDifficultyRow, error)
+	GrantPermissionToRole(ctx context.Context, arg GrantPermissionToRoleParams) (RolePermission, error)
+	GrantRoleToUser(ctx context.Context, arg GrantRoleToUserParams) (UserRole, error)
+	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
+	IsEventProcessed(ctx context.Context, arg IsEventProcessedParams) (bool, error)
+	IsUserInRole(ctx context.Context, arg IsUserInRoleParams) (bool, error)
 	ListExamParticipants(ctx context.Context, examID int64) ([]ListExamParticipantsRow, error)
 	ListExamProblems(ctx context.Context, examID int64) ([]ListExamProblemsRow, error)
 	ListExams(ctx context.Context, arg ListExamsParams) ([]ListExamsRow, error)
 	ListExamsByLecturer(ctx context.Context, arg ListExamsByLecturerParams) ([]ListExamsByLecturerRow, error)
+	ListPermissions(ctx context.Context) ([]Permission, error)
+	ListPermissionsByResourceType(ctx context.Context, resourceType string) ([]Permission, error)
 	ListProblemTestCases(ctx context.Context, problemID int64) ([]ProblemTestCase, error)
 	ListProblems(ctx context.Context, arg ListProblemsParams) ([]ListProblemsRow, error)
 	ListProblemsByDifficulty(ctx context.Context, arg ListProblemsByDifficultyParams) ([]ListProblemsByDifficultyRow, error)
 	ListProblemsByTopic(ctx context.Context, arg ListProblemsByTopicParams) ([]ListProblemsByTopicRow, error)
 	ListPublicExams(ctx context.Context, arg ListPublicExamsParams) ([]ListPublicExamsRow, error)
 	ListRecentAttempts(ctx context.Context, arg ListRecentAttemptsParams) ([]ListRecentAttemptsRow, error)
+	ListRoles(ctx context.Context) ([]Role, error)
 	ListSolvedProblems(ctx context.Context, arg ListSolvedProblemsParams) ([]ListSolvedProblemsRow, error)
 	ListSubmissionTestResults(ctx context.Context, submissionID int64) ([]ListSubmissionTestResultsRow, error)
 	ListTopics(ctx context.Context) ([]Topic, error)
@@ -87,11 +135,25 @@ type Querier interface {
 	ListUserSubmissionsForProblem(ctx context.Context, arg ListUserSubmissionsForProblemParams) ([]Submission, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	ListUsersByRole(ctx context.Context, arg ListUsersByRoleParams) ([]User, error)
+	MarkEventFailed(ctx context.Context, id uuid.UUID) error
+	// =============================================
+	// PROCESSED EVENTS (for idempotent consumers)
+	// =============================================
+	MarkEventProcessed(ctx context.Context, arg MarkEventProcessedParams) error
+	MarkEventPublished(ctx context.Context, id uuid.UUID) error
 	MarkProblemSolved(ctx context.Context, arg MarkProblemSolvedParams) (UserProgress, error)
 	RemoveParticipant(ctx context.Context, arg RemoveParticipantParams) error
 	RemoveProblemFromExam(ctx context.Context, arg RemoveProblemFromExamParams) error
+	RevokeAllResourceAccess(ctx context.Context, arg RevokeAllResourceAccessParams) error
 	RevokeAllUserTokens(ctx context.Context, userID int64) error
+	RevokePermissionFromRole(ctx context.Context, arg RevokePermissionFromRoleParams) error
 	RevokeRefreshToken(ctx context.Context, token string) error
+	RevokeResourceAccess(ctx context.Context, arg RevokeResourceAccessParams) error
+	RevokeRoleFromUser(ctx context.Context, arg RevokeRoleFromUserParams) error
+	// =============================================
+	// OUTBOX EVENTS
+	// =============================================
+	SaveOutboxEvent(ctx context.Context, arg SaveOutboxEventParams) (SaveOutboxEventRow, error)
 	StartExam(ctx context.Context, arg StartExamParams) (ExamParticipant, error)
 	SubmitExam(ctx context.Context, arg SubmitExamParams) (ExamParticipant, error)
 	UpdateExam(ctx context.Context, arg UpdateExamParams) (Exam, error)
@@ -100,6 +162,7 @@ type Querier interface {
 	UpdateParticipantScore(ctx context.Context, arg UpdateParticipantScoreParams) (ExamParticipant, error)
 	UpdateProblem(ctx context.Context, arg UpdateProblemParams) (Problem, error)
 	UpdateProblemTestCase(ctx context.Context, arg UpdateProblemTestCaseParams) (ProblemTestCase, error)
+	UpdateRole(ctx context.Context, arg UpdateRoleParams) (Role, error)
 	UpdateSubmissionScore(ctx context.Context, arg UpdateSubmissionScoreParams) error
 	UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)

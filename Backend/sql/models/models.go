@@ -5,6 +5,9 @@
 package models
 
 import (
+	"encoding/json"
+
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -64,6 +67,37 @@ type ExamSubmission struct {
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
 }
 
+type OutboxEvent struct {
+	ID          uuid.UUID        `json:"id"`
+	Topic       string           `json:"topic"`
+	Payload     json.RawMessage  `json:"payload"`
+	Status      string           `json:"status"`
+	RetryCount  int32            `json:"retryCount"`
+	CreatedAt   pgtype.Timestamp `json:"createdAt"`
+	PublishedAt pgtype.Timestamp `json:"publishedAt"`
+	UpdatedAt   pgtype.Timestamp `json:"updatedAt"`
+}
+
+type Permission struct {
+	ID           int32            `json:"id"`
+	ResourceType string           `json:"resourceType"`
+	Action       string           `json:"action"`
+	Description  *string          `json:"description"`
+	CreatedAt    pgtype.Timestamp `json:"createdAt"`
+}
+
+type PermissionAuditLog struct {
+	ID                 int32            `json:"id"`
+	Action             string           `json:"action"`
+	TargetUserID       *int32           `json:"targetUserId"`
+	TargetRoleID       *int32           `json:"targetRoleId"`
+	TargetResourceType *string          `json:"targetResourceType"`
+	TargetResourceID   *int64           `json:"targetResourceId"`
+	PerformedBy        int32            `json:"performedBy"`
+	Details            []byte           `json:"details"`
+	CreatedAt          pgtype.Timestamp `json:"createdAt"`
+}
+
 type Problem struct {
 	ID                 int64              `json:"id"`
 	Title              string             `json:"title"`
@@ -97,6 +131,12 @@ type ProblemTestCase struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updatedAt"`
 }
 
+type ProcessedEvent struct {
+	EventID       string           `json:"eventId"`
+	ConsumerGroup string           `json:"consumerGroup"`
+	ProcessedAt   pgtype.Timestamp `json:"processedAt"`
+}
+
 type RefreshToken struct {
 	ID        int64              `json:"id"`
 	UserID    int64              `json:"userId"`
@@ -105,6 +145,32 @@ type RefreshToken struct {
 	Revoked   *bool              `json:"revoked"`
 	CreatedAt pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type ResourceAccessControl struct {
+	ID             int32            `json:"id"`
+	ResourceType   string           `json:"resourceType"`
+	ResourceID     int64            `json:"resourceId"`
+	UserID         int32            `json:"userId"`
+	PermissionType string           `json:"permissionType"`
+	GrantedAt      pgtype.Timestamp `json:"grantedAt"`
+	GrantedBy      *int32           `json:"grantedBy"`
+}
+
+type Role struct {
+	ID           int32            `json:"id"`
+	Name         string           `json:"name"`
+	Description  *string          `json:"description"`
+	IsExtensible *bool            `json:"isExtensible"`
+	CreatedAt    pgtype.Timestamp `json:"createdAt"`
+	UpdatedAt    pgtype.Timestamp `json:"updatedAt"`
+}
+
+type RolePermission struct {
+	ID           int32            `json:"id"`
+	RoleID       int32            `json:"roleId"`
+	PermissionID int32            `json:"permissionId"`
+	CreatedAt    pgtype.Timestamp `json:"createdAt"`
 }
 
 type Submission struct {
@@ -172,4 +238,12 @@ type UserProgress struct {
 	FirstAttemptedAt pgtype.Timestamptz `json:"firstAttemptedAt"`
 	LastAttemptedAt  pgtype.Timestamptz `json:"lastAttemptedAt"`
 	SolvedAt         pgtype.Timestamptz `json:"solvedAt"`
+}
+
+type UserRole struct {
+	ID         int32            `json:"id"`
+	UserID     int32            `json:"userId"`
+	RoleID     int32            `json:"roleId"`
+	AssignedAt pgtype.Timestamp `json:"assignedAt"`
+	AssignedBy *int32           `json:"assignedBy"`
 }

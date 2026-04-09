@@ -13,8 +13,9 @@ import (
 
 func Routes(rg *gin.RouterGroup, database *db.Database, queryRunner runner.Runner, cfg *configs.Config, authMiddleware gin.HandlerFunc) {
 	subRepo := repository.NewSubmissionRepository(database)
+	outboxRepo := repository.NewSubmissionOutboxRepository(database)
 	probRepo := problemRepo.NewProblemRepository(database)
-	uc := usecase.NewSubmissionUseCase(subRepo, probRepo, queryRunner, cfg)
+	uc := usecase.NewSubmissionUseCase(subRepo, outboxRepo, probRepo, queryRunner, cfg)
 	handler := NewSubmissionHandler(uc)
 
 	// Problem submission routes

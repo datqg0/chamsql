@@ -14,8 +14,9 @@ import (
 
 func Routes(rg *gin.RouterGroup, database *db.Database, queryRunner runner.Runner, cfg *configs.Config, authMiddleware gin.HandlerFunc) {
 	examRepoImpl := repository.NewExamRepository(database)
+	outboxRepoImpl := repository.NewExamOutboxRepository(database)
 	probRepoImpl := problemRepo.NewProblemRepository(database)
-	uc := usecase.NewExamUseCase(examRepoImpl, probRepoImpl, queryRunner, cfg)
+	uc := usecase.NewExamUseCase(examRepoImpl, probRepoImpl, outboxRepoImpl, queryRunner, cfg)
 	handler := NewExamHandler(uc)
 
 	exams := rg.Group("/exams")
