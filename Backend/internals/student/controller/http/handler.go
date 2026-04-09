@@ -201,6 +201,19 @@ func (h *StudentHandler) GetTimeRemaining(c *gin.Context) {
 }
 
 func (h *StudentHandler) GetExamResults(c *gin.Context) {
+	var req dto.ListExamResultsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.Limit < 1 {
+		req.Limit = 10
+	}
+
 	studentID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -208,7 +221,7 @@ func (h *StudentHandler) GetExamResults(c *gin.Context) {
 	}
 
 	studentIDInt, _ := studentID.(int64)
-	response, err := h.resultsUseCase.GetExamResults(c.Request.Context(), studentIDInt)
+	response, err := h.resultsUseCase.GetExamResults(c.Request.Context(), studentIDInt, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -247,7 +260,20 @@ func (h *StudentHandler) GetClassRanking(c *gin.Context) {
 		return
 	}
 
-	response, err := h.resultsUseCase.GetClassRanking(c.Request.Context(), examID)
+	var req dto.RankingRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.Limit < 1 {
+		req.Limit = 50
+	}
+
+	response, err := h.resultsUseCase.GetClassRanking(c.Request.Context(), examID, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

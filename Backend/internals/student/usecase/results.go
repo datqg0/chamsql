@@ -11,9 +11,9 @@ import (
 )
 
 type IStudentResultsUseCase interface {
-	GetExamResults(ctx context.Context, userID int64) (*dto.ListExamResultsResponse, error)
+	GetExamResults(ctx context.Context, userID int64, req *dto.ListExamResultsRequest) (*dto.ListExamResultsResponse, error)
 	GetExamResultDetail(ctx context.Context, examID, userID int64) (*dto.ExamResultDetail, error)
-	GetClassRanking(ctx context.Context, examID int64) (*dto.ClassRankingResponse, error)
+	GetClassRanking(ctx context.Context, examID int64, req *dto.RankingRequest) (*dto.ClassRankingResponse, error)
 	GetExamAnalytics(ctx context.Context, examID int64) (*dto.ExamAnalytics, error)
 }
 
@@ -29,24 +29,104 @@ func NewStudentResultsUseCase(database *db.Database) IStudentResultsUseCase {
 	}
 }
 
-func (su *studentResultsUseCase) GetExamResults(ctx context.Context, userID int64) (*dto.ListExamResultsResponse, error) {
-	rows := su.db.GetPool().QueryRow(ctx,
-		`SELECT COUNT(*) FROM exam_participants
-		 WHERE user_id = $1 AND submitted_at IS NOT NULL`,
-		userID)
+func (su *studentResultsUseCase) GetExamResults(ctx context.Context, userID int64, req *dto.ListExamResultsRequest) (*dto.ListExamResultsResponse, error) {
+	if req == nil {
+		req = &dto.ListExamResultsRequest{
+			Page:  1,
+			Limit: 10,
+		}
+	}
+
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.Limit < 1 {
+		req.Limit = 10
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+
+	countQuery := `SELECT COUNT(*) FROM exam_participants ep
+		 JOIN exams e ON e.id = ep.exam_id
+		 WHERE ep.user_id = $1 AND ep.submitted_at IS NOT NULL`
+	countParams := []interface{}{userID}
+
+	if req.Status != "" {
+		countQuery += ` AND ep.status = $2`
+		countParams = append(countParams, req.Status)
+	}
+
+	if req.ScoreMin > 0 || req.ScoreMax > 0 {
+		if req.ScoreMin > 0 && req.ScoreMax > 0 {
+			countQuery += ` AND ep.total_score BETWEEN $` + fmt.Sprintf("%d AND $%d", len(countParams)+1, len(countParams)+2)
+			countParams = append(countParams, req.ScoreMin, req.ScoreMax)
+		} else if req.ScoreMin > 0 {
+			countQuery += ` AND ep.total_score >= $` + fmt.Sprintf("%d", len(countParams)+1)
+			countParams = append(countParams, req.ScoreMin)
+		} else if req.ScoreMax > 0 {
+			countQuery += ` AND ep.total_score <= $` + fmt.Sprintf("%d", len(countParams)+1)
+			countParams = append(countParams, req.ScoreMax)
+		}
+	}
+
+	if req.StartDate != "" {
+		countQuery += ` AND ep.submitted_at >= $` + fmt.Sprintf("%d", len(countParams)+1)
+		countParams = append(countParams, req.StartDate)
+	}
+
+	if req.EndDate != "" {
+		countQuery += ` AND ep.submitted_at <= $` + fmt.Sprintf("%d", len(countParams)+1)
+		countParams = append(countParams, req.EndDate)
+	}
+
+	rows := su.db.GetPool().QueryRow(ctx, countQuery, countParams...)
 
 	var total int64
 	if err := rows.Scan(&total); err != nil {
 		total = 0
 	}
 
-	resultRows, err := su.db.GetPool().Query(ctx,
-		`SELECT ep.exam_id, e.title, ep.total_score, ep.submitted_at, ep.status
+	offset := (req.Page - 1) * req.Limit
+
+	dataQuery := `SELECT ep.exam_id, e.title, ep.total_score, ep.submitted_at, ep.status
 		 FROM exam_participants ep
 		 JOIN exams e ON e.id = ep.exam_id
-		 WHERE ep.user_id = $1 AND ep.submitted_at IS NOT NULL
-		 ORDER BY ep.submitted_at DESC`,
-		userID)
+		 WHERE ep.user_id = $1 AND ep.submitted_at IS NOT NULL`
+	dataParams := []interface{}{userID}
+
+	if req.Status != "" {
+		dataQuery += ` AND ep.status = $` + fmt.Sprintf("%d", len(dataParams)+1)
+		dataParams = append(dataParams, req.Status)
+	}
+
+	if req.ScoreMin > 0 || req.ScoreMax > 0 {
+		if req.ScoreMin > 0 && req.ScoreMax > 0 {
+			dataQuery += ` AND ep.total_score BETWEEN $` + fmt.Sprintf("%d AND $%d", len(dataParams)+1, len(dataParams)+2)
+			dataParams = append(dataParams, req.ScoreMin, req.ScoreMax)
+		} else if req.ScoreMin > 0 {
+			dataQuery += ` AND ep.total_score >= $` + fmt.Sprintf("%d", len(dataParams)+1)
+			dataParams = append(dataParams, req.ScoreMin)
+		} else if req.ScoreMax > 0 {
+			dataQuery += ` AND ep.total_score <= $` + fmt.Sprintf("%d", len(dataParams)+1)
+			dataParams = append(dataParams, req.ScoreMax)
+		}
+	}
+
+	if req.StartDate != "" {
+		dataQuery += ` AND ep.submitted_at >= $` + fmt.Sprintf("%d", len(dataParams)+1)
+		dataParams = append(dataParams, req.StartDate)
+	}
+
+	if req.EndDate != "" {
+		dataQuery += ` AND ep.submitted_at <= $` + fmt.Sprintf("%d", len(dataParams)+1)
+		dataParams = append(dataParams, req.EndDate)
+	}
+
+	dataQuery += ` ORDER BY ep.submitted_at DESC LIMIT $` + fmt.Sprintf("%d OFFSET $%d", len(dataParams)+1, len(dataParams)+2)
+	dataParams = append(dataParams, req.Limit, offset)
+
+	resultRows, err := su.db.GetPool().Query(ctx, dataQuery, dataParams...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch exam results: %w", err)
@@ -83,6 +163,8 @@ func (su *studentResultsUseCase) GetExamResults(ctx context.Context, userID int6
 	return &dto.ListExamResultsResponse{
 		Results: results,
 		Total:   total,
+		Page:    req.Page,
+		Limit:   req.Limit,
 	}, nil
 }
 
@@ -174,11 +256,40 @@ func (su *studentResultsUseCase) GetExamResultDetail(ctx context.Context, examID
 	}, nil
 }
 
-func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int64) (*dto.ClassRankingResponse, error) {
+func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int64, req *dto.RankingRequest) (*dto.ClassRankingResponse, error) {
+	if req == nil {
+		req = &dto.RankingRequest{
+			Page:  1,
+			Limit: 50,
+		}
+	}
+
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.Limit < 1 {
+		req.Limit = 50
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+
 	exam, err := su.queries.GetExamForStudent(ctx, examID)
 	if err != nil {
 		return nil, fmt.Errorf("exam not found: %w", err)
 	}
+
+	countRow := su.db.GetPool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_participants ep
+		 WHERE ep.exam_id = $1 AND ep.submitted_at IS NOT NULL`,
+		examID)
+
+	var total int64
+	if err := countRow.Scan(&total); err != nil {
+		total = 0
+	}
+
+	offset := (req.Page - 1) * req.Limit
 
 	rows, err := su.db.GetPool().Query(ctx,
 		`SELECT ep.user_id, ep.total_score, 
@@ -187,8 +298,9 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 		              COUNT(*) OVER ()) as percentile
 		 FROM exam_participants ep
 		 WHERE ep.exam_id = $1 AND ep.submitted_at IS NOT NULL
-		 ORDER BY ep.total_score DESC`,
-		examID)
+		 ORDER BY ep.total_score DESC
+		 LIMIT $2 OFFSET $3`,
+		examID, req.Limit, offset)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch rankings: %w", err)
@@ -223,6 +335,9 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 		ExamID:    examID,
 		ExamTitle: exam.Title,
 		Rankings:  rankings,
+		Total:     total,
+		Page:      req.Page,
+		Limit:     req.Limit,
 	}, nil
 }
 

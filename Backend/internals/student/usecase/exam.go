@@ -38,7 +38,6 @@ func (su *studentExamUseCase) JoinExam(ctx context.Context, examID, userID int64
 		return nil, fmt.Errorf("exam not found or not published: %w", err)
 	}
 
-	// Check if user already joined
 	_, err = su.queries.GetParticipantStatus(ctx, models.GetParticipantStatusParams{
 		ExamID: examID,
 		UserID: userID,
@@ -47,7 +46,6 @@ func (su *studentExamUseCase) JoinExam(ctx context.Context, examID, userID int64
 		return nil, fmt.Errorf("already joined this exam")
 	}
 
-	// Add participant
 	newParticipant, err := su.queries.AddParticipant(ctx, models.AddParticipantParams{
 		ExamID: examID,
 		UserID: userID,
@@ -56,7 +54,6 @@ func (su *studentExamUseCase) JoinExam(ctx context.Context, examID, userID int64
 		return nil, fmt.Errorf("failed to join exam: %w", err)
 	}
 
-	// Count problems in exam
 	problemCount := int64(0)
 	problems, err := su.queries.GetExamProblemsForStudent(ctx, examID)
 	if err == nil {
@@ -105,7 +102,6 @@ func (su *studentExamUseCase) StartExam(ctx context.Context, examID, userID int6
 		return nil, fmt.Errorf("exam already started or completed")
 	}
 
-	// Verify exam is within time window
 	exam, err := su.queries.GetExamForStudent(ctx, examID)
 	if err != nil {
 		return nil, fmt.Errorf("exam not found: %w", err)
@@ -119,7 +115,6 @@ func (su *studentExamUseCase) StartExam(ctx context.Context, examID, userID int6
 		return nil, fmt.Errorf("exam has ended")
 	}
 
-	// Start exam
 	updated, err := su.queries.StartExamParticipant(ctx, models.StartExamParticipantParams{
 		ExamID: examID,
 		UserID: userID,
@@ -210,7 +205,6 @@ func (su *studentExamUseCase) GetExam(ctx context.Context, examID, userID int64)
 }
 
 func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProblemID, userID int64) (*dto.GetProblemResponse, error) {
-	// Verify student is registered for exam
 	_, err := su.queries.GetParticipantStatus(ctx, models.GetParticipantStatusParams{
 		ExamID: examID,
 		UserID: userID,
@@ -219,7 +213,6 @@ func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("not registered for this exam: %w", err)
 	}
 
-	// Get problem details
 	problem, err := su.queries.GetExamProblemDetails(ctx, models.GetExamProblemDetailsParams{
 		ExamID: examID,
 		ID:     examProblemID,
@@ -228,7 +221,6 @@ func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("problem not found: %w", err)
 	}
 
-	// Get student's submissions
 	submissions, err := su.queries.GetStudentSubmissionsForProblem(ctx, models.GetStudentSubmissionsForProblemParams{
 		ExamID:        examID,
 		ExamProblemID: examProblemID,
@@ -241,9 +233,7 @@ func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProble
 		attemptNumber = int32(len(submissions)) + 1
 		for _, sub := range submissions {
 			score := 0.0
-			// Convert pgtype.Numeric to float64
 			if sub.Score.Valid && sub.Score.Int != nil {
-				// Use Int64Value to extract the value
 				if i64, err := sub.Score.Int64Value(); err == nil {
 					score = float64(i64.Int64)
 				}
@@ -295,7 +285,6 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("code cannot be empty")
 	}
 
-	// Verify student is in exam and exam is active
 	participant, err := su.queries.GetParticipantStatus(ctx, models.GetParticipantStatusParams{
 		ExamID: examID,
 		UserID: userID,
@@ -313,7 +302,6 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("exam not in progress")
 	}
 
-	// Create submission
 	submission, err := su.queries.CreateExamSubmissionForStudent(ctx, models.CreateExamSubmissionForStudentParams{
 		ExamID:        examID,
 		ExamProblemID: examProblemID,
@@ -325,7 +313,6 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("failed to create submission: %w", err)
 	}
 
-	// Get problem details for scoring mode
 	problem, err := su.queries.GetExamProblemDetails(ctx, models.GetExamProblemDetailsParams{
 		ExamID: examID,
 		ID:     examProblemID,
@@ -334,8 +321,6 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("problem not found: %w", err)
 	}
 
-	// TODO: Execute code against database (will be in separate service)
-	// For now, return pending status with score 0
 	score := 0.0
 	scoringMode := "manual"
 	if problem.ScoringMode != nil {
@@ -383,7 +368,6 @@ func (su *studentExamUseCase) SubmitExam(ctx context.Context, examID, userID int
 		return nil, fmt.Errorf("exam already submitted")
 	}
 
-	// Submit exam
 	updated, err := su.queries.SubmitExamParticipant(ctx, models.SubmitExamParticipantParams{
 		ExamID: examID,
 		UserID: userID,
@@ -392,7 +376,6 @@ func (su *studentExamUseCase) SubmitExam(ctx context.Context, examID, userID int
 		return nil, fmt.Errorf("failed to submit exam: %w", err)
 	}
 
-	// Calculate total score from submissions
 	row := su.db.GetPool().QueryRow(ctx,
 		`SELECT COALESCE(SUM(es.score), 0) FROM exam_submissions es
 		 WHERE es.exam_id = $1 AND es.user_id = $2 AND es.graded_by IS NOT NULL`,
@@ -402,16 +385,6 @@ func (su *studentExamUseCase) SubmitExam(ctx context.Context, examID, userID int
 	if err := row.Scan(&totalScore); err != nil {
 		totalScore = 0
 	}
-
-	// Update total score (will be calculated separately)
-	// _, err = su.queries.UpdateParticipantScore(ctx, models.UpdateParticipantScoreParams{
-	// 	ExamID:     examID,
-	// 	UserID:     userID,
-	// 	TotalScore: totalScore,
-	// })
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to update score: %w", err)
-	// }
 
 	updatedStatus := "submitted"
 	if updated.Status != nil {

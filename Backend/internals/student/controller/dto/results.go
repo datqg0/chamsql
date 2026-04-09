@@ -38,12 +38,17 @@ type ProblemResultDetail struct {
 type ListExamResultsResponse struct {
 	Results []ExamResult `json:"results"`
 	Total   int64        `json:"total"`
+	Page    int32        `json:"page"`
+	Limit   int32        `json:"limit"`
 }
 
 type ClassRankingResponse struct {
 	ExamID    int64            `json:"exam_id"`
 	ExamTitle string           `json:"exam_title"`
 	Rankings  []StudentRanking `json:"rankings"`
+	Total     int64            `json:"total"`
+	Page      int32            `json:"page"`
+	Limit     int32            `json:"limit"`
 }
 
 type StudentRanking struct {
@@ -79,4 +84,19 @@ type ProblemDifficultyAnalytics struct {
 	AvgScore     float64 `json:"avg_score"`
 	CorrectRate  float64 `json:"correct_rate"`
 	StudentCount int64   `json:"student_count"`
+}
+
+type ListExamResultsRequest struct {
+	Page      int32   `form:"page" binding:"min=1"`
+	Limit     int32   `form:"limit" binding:"min=1,max=100"`
+	Status    string  `form:"status"`
+	ScoreMin  float64 `form:"score_min"`
+	ScoreMax  float64 `form:"score_max"`
+	StartDate string  `form:"start_date"`
+	EndDate   string  `form:"end_date"`
+}
+
+type RankingRequest struct {
+	Page  int32 `form:"page" binding:"min=1"`
+	Limit int32 `form:"limit" binding:"min=1,max=100"`
 }
