@@ -11,6 +11,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Class struct {
+	ID          int64              `json:"id"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	Code        string             `json:"code"`
+	CreatedBy   int64              `json:"createdBy"`
+	Semester    *string            `json:"semester"`
+	Year        *int32             `json:"year"`
+	IsActive    *bool              `json:"isActive"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type ClassExam struct {
+	ID        int64              `json:"id"`
+	ClassID   int64              `json:"classId"`
+	ExamID    int64              `json:"examId"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+}
+
+type ClassMember struct {
+	ID       int64              `json:"id"`
+	ClassID  int64              `json:"classId"`
+	UserID   int64              `json:"userId"`
+	Role     *string            `json:"role"`
+	JoinedAt pgtype.Timestamptz `json:"joinedAt"`
+}
+
 type Exam struct {
 	ID                    int64              `json:"id"`
 	Title                 string             `json:"title"`
@@ -42,11 +70,13 @@ type ExamParticipant struct {
 }
 
 type ExamProblem struct {
-	ID        int64  `json:"id"`
-	ExamID    int64  `json:"examId"`
-	ProblemID int64  `json:"problemId"`
-	Points    *int32 `json:"points"`
-	SortOrder *int32 `json:"sortOrder"`
+	ID              int64   `json:"id"`
+	ExamID          int64   `json:"examId"`
+	ProblemID       int64   `json:"problemId"`
+	Points          *int32  `json:"points"`
+	SortOrder       *int32  `json:"sortOrder"`
+	ScoringMode     *string `json:"scoringMode"`
+	ReferenceAnswer *string `json:"referenceAnswer"`
 }
 
 type ExamSubmission struct {
@@ -65,6 +95,8 @@ type ExamSubmission struct {
 	Score           pgtype.Numeric     `json:"score"`
 	AttemptNumber   *int32             `json:"attemptNumber"`
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	GradedBy        *int64             `json:"gradedBy"`
+	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
 }
 
 type OutboxEvent struct {

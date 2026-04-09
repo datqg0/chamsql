@@ -184,3 +184,124 @@ FROM exam_participants ep
 JOIN users u ON u.id = ep.user_id
 WHERE ep.exam_id = $1
 ORDER BY ep.total_score DESC;
+
+-- =============================================
+-- GRADING QUERIES
+-- =============================================
+
+-- name: GetExamSubmissionForGrading :one
+SELECT es.*, ep.scoring_mode, ep.reference_answer, ep.points as max_points
+FROM exam_submissions es
+JOIN exam_problems ep ON ep.id = es.exam_problem_id
+WHERE es.id = $1;
+
+-- name: UpdateExamSubmissionGrade :one
+UPDATE exam_submissions SET
+    score = $2,
+    graded_by = $3,
+    graded_at = NOW(),
+    status = 'graded'
+WHERE id = $1
+RETURNING *;
+
+-- name: ListUngradedExamSubmissions :many
+SELECT es.*, ep.scoring_mode, ep.reference_answer, ep.points as max_points,
+    p.title as problem_title, u.full_name as student_name
+FROM exam_submissions es
+JOIN exam_problems ep ON ep.id = es.exam_problem_id
+JOIN problems p ON p.id = ep.problem_id
+JOIN users u ON u.id = es.user_id
+WHERE es.exam_id = $1 AND (es.graded_by IS NULL OR ep.scoring_mode = 'manual')
+ORDER BY es.submitted_at ASC;
+
+-- name: GetExamGradingStats :one
+SELECT 
+    COUNT(*) as total_submissions,
+    COUNT(CASE WHEN graded_by IS NOT NULL THEN 1 END) as graded_count,
+    COUNT(CASE WHEN graded_by IS NULL THEN 1 END) as ungraded_count,
+    AVG(score) as avg_score,
+    MAX(score) as max_score,
+    MIN(score) as min_score
+FROM exam_submissions
+WHERE exam_id = $1;
+
+-- =============================================
+-- STUDENT EXAM EXECUTION (PHASE 4)
+-- =============================================
+
+-- name: GetExamForStudent :one
+SELECT e.id, e.title, e.description, e.start_time, e.end_time, 
+       e.duration_minutes, e.status, e.created_by
+FROM exams e
+WHERE e.id = $1 AND e.status = 'published';
+
+-- name: GetExamProblemsForStudent :many
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       ep.scoring_mode, p.title, p.description, p.difficulty
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1
+ORDER BY ep.sort_order ASC;
+
+-- name: GetParticipantStatus :one
+SELECT id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
+FROM exam_participants
+WHERE exam_id = $1 AND user_id = $2;
+
+-- name: CreateExamSubmissionForStudent :one
+INSERT INTO exam_submissions (
+    exam_id, exam_problem_id, user_id, code, database_type, status, attempt_number
+)
+VALUES ($1, $2, $3, $4, $5, 'pending', 
+    COALESCE((
+        SELECT attempt_number + 1 FROM exam_submissions 
+        WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
+        ORDER BY attempt_number DESC LIMIT 1
+    ), 1)
+)
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, 
+          status, execution_time_ms, expected_output, actual_output, 
+          error_message, is_correct, score, attempt_number, submitted_at;
+
+-- name: UpdateExamSubmissionWithResult :one
+UPDATE exam_submissions
+SET 
+    status = $2,
+    actual_output = $3,
+    expected_output = $4,
+    error_message = $5,
+    execution_time_ms = $6,
+    is_correct = $7,
+    score = $8
+WHERE id = $1
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type,
+          status, execution_time_ms, expected_output, actual_output,
+          error_message, is_correct, score, attempt_number, submitted_at;
+
+-- name: GetStudentSubmissionsForProblem :many
+SELECT id, exam_id, exam_problem_id, user_id, code, database_type,
+       status, execution_time_ms, expected_output, actual_output,
+       error_message, is_correct, score, attempt_number, submitted_at
+FROM exam_submissions
+WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
+ORDER BY attempt_number ASC;
+
+-- name: SubmitExamParticipant :one
+UPDATE exam_participants
+SET submitted_at = NOW(), status = 'submitted'
+WHERE exam_id = $1 AND user_id = $2
+RETURNING id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at;
+
+-- name: StartExamParticipant :one
+UPDATE exam_participants
+SET started_at = NOW(), status = 'in_progress'
+WHERE exam_id = $1 AND user_id = $2 AND status = 'registered'
+RETURNING id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at;
+
+-- name: GetExamProblemDetails :one
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       ep.scoring_mode, ep.reference_answer, 
+       p.title, p.description, p.difficulty, p.init_script, p.solution_query
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1 AND ep.id = $2;

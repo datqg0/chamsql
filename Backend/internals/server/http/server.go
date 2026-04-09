@@ -6,7 +6,9 @@ import (
 	adminHttp "backend/internals/admin/controller/http"
 	authHttp "backend/internals/auth/controller/http"
 	examHttp "backend/internals/exam/controller/http"
+	lecturerHttp "backend/internals/lecturer/controller/http"
 	problemHttp "backend/internals/problem/controller/http"
+	studentHttp "backend/internals/student/controller/http"
 	submissionHttp "backend/internals/submission/controller/http"
 	topicHttp "backend/internals/topic/controller/http"
 	"backend/pkgs/jwt"
@@ -90,6 +92,12 @@ func (s *Server) MapRoutes() {
 
 	// Exam routes (CRUD, participants, student actions)
 	examHttp.Routes(v1, s.database, s.queryRunner, s.cfg, authMiddleware)
+
+	// Lecturer routes (class management)
+	lecturerHttp.Routes(v1, s.database, authMiddleware)
+
+	// Student routes (exam participation)
+	studentHttp.Routes(v1, s.database, authMiddleware)
 
 	// Admin routes (user import, stats)
 	adminHttp.Routes(v1, s.database, authMiddleware)

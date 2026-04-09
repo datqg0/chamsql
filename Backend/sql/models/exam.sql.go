@@ -46,7 +46,7 @@ const addProblemToExam = `-- name: AddProblemToExam :one
 
 INSERT INTO exam_problems (exam_id, problem_id, points, sort_order)
 VALUES ($1, $2, $3, $4)
-RETURNING id, exam_id, problem_id, points, sort_order
+RETURNING id, exam_id, problem_id, points, sort_order, scoring_mode, reference_answer
 `
 
 type AddProblemToExamParams struct {
@@ -73,6 +73,8 @@ func (q *Queries) AddProblemToExam(ctx context.Context, arg AddProblemToExamPara
 		&i.ProblemID,
 		&i.Points,
 		&i.SortOrder,
+		&i.ScoringMode,
+		&i.ReferenceAnswer,
 	)
 	return i, err
 }
@@ -171,7 +173,7 @@ INSERT INTO exam_submissions (
     is_correct, score, attempt_number
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at
 `
 
 type CreateExamSubmissionParams struct {
@@ -210,6 +212,79 @@ func (q *Queries) CreateExamSubmission(ctx context.Context, arg CreateExamSubmis
 		arg.AttemptNumber,
 	)
 	var i ExamSubmission
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.ExamProblemID,
+		&i.UserID,
+		&i.Code,
+		&i.DatabaseType,
+		&i.Status,
+		&i.ExecutionTimeMs,
+		&i.ExpectedOutput,
+		&i.ActualOutput,
+		&i.ErrorMessage,
+		&i.IsCorrect,
+		&i.Score,
+		&i.AttemptNumber,
+		&i.SubmittedAt,
+		&i.GradedBy,
+		&i.GradedAt,
+	)
+	return i, err
+}
+
+const createExamSubmissionForStudent = `-- name: CreateExamSubmissionForStudent :one
+INSERT INTO exam_submissions (
+    exam_id, exam_problem_id, user_id, code, database_type, status, attempt_number
+)
+VALUES ($1, $2, $3, $4, $5, 'pending', 
+    COALESCE((
+        SELECT attempt_number + 1 FROM exam_submissions 
+        WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
+        ORDER BY attempt_number DESC LIMIT 1
+    ), 1)
+)
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, 
+          status, execution_time_ms, expected_output, actual_output, 
+          error_message, is_correct, score, attempt_number, submitted_at
+`
+
+type CreateExamSubmissionForStudentParams struct {
+	ExamID        int64  `json:"examId"`
+	ExamProblemID int64  `json:"examProblemId"`
+	UserID        int64  `json:"userId"`
+	Code          string `json:"code"`
+	DatabaseType  string `json:"databaseType"`
+}
+
+type CreateExamSubmissionForStudentRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+}
+
+func (q *Queries) CreateExamSubmissionForStudent(ctx context.Context, arg CreateExamSubmissionForStudentParams) (CreateExamSubmissionForStudentRow, error) {
+	row := q.db.QueryRow(ctx, createExamSubmissionForStudent,
+		arg.ExamID,
+		arg.ExamProblemID,
+		arg.UserID,
+		arg.Code,
+		arg.DatabaseType,
+	)
+	var i CreateExamSubmissionForStudentRow
 	err := row.Scan(
 		&i.ID,
 		&i.ExamID,
@@ -291,6 +366,179 @@ func (q *Queries) GetExamByID(ctx context.Context, id int64) (GetExamByIDRow, er
 	return i, err
 }
 
+const getExamForStudent = `-- name: GetExamForStudent :one
+
+SELECT e.id, e.title, e.description, e.start_time, e.end_time, 
+       e.duration_minutes, e.status, e.created_by
+FROM exams e
+WHERE e.id = $1 AND e.status = 'published'
+`
+
+type GetExamForStudentRow struct {
+	ID              int64              `json:"id"`
+	Title           string             `json:"title"`
+	Description     *string            `json:"description"`
+	StartTime       pgtype.Timestamptz `json:"startTime"`
+	EndTime         pgtype.Timestamptz `json:"endTime"`
+	DurationMinutes int32              `json:"durationMinutes"`
+	Status          *string            `json:"status"`
+	CreatedBy       int64              `json:"createdBy"`
+}
+
+// =============================================
+// STUDENT EXAM EXECUTION (PHASE 4)
+// =============================================
+func (q *Queries) GetExamForStudent(ctx context.Context, id int64) (GetExamForStudentRow, error) {
+	row := q.db.QueryRow(ctx, getExamForStudent, id)
+	var i GetExamForStudentRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Description,
+		&i.StartTime,
+		&i.EndTime,
+		&i.DurationMinutes,
+		&i.Status,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
+const getExamGradingStats = `-- name: GetExamGradingStats :one
+SELECT 
+    COUNT(*) as total_submissions,
+    COUNT(CASE WHEN graded_by IS NOT NULL THEN 1 END) as graded_count,
+    COUNT(CASE WHEN graded_by IS NULL THEN 1 END) as ungraded_count,
+    AVG(score) as avg_score,
+    MAX(score) as max_score,
+    MIN(score) as min_score
+FROM exam_submissions
+WHERE exam_id = $1
+`
+
+type GetExamGradingStatsRow struct {
+	TotalSubmissions int64       `json:"totalSubmissions"`
+	GradedCount      int64       `json:"gradedCount"`
+	UngradedCount    int64       `json:"ungradedCount"`
+	AvgScore         float64     `json:"avgScore"`
+	MaxScore         interface{} `json:"maxScore"`
+	MinScore         interface{} `json:"minScore"`
+}
+
+func (q *Queries) GetExamGradingStats(ctx context.Context, examID int64) (GetExamGradingStatsRow, error) {
+	row := q.db.QueryRow(ctx, getExamGradingStats, examID)
+	var i GetExamGradingStatsRow
+	err := row.Scan(
+		&i.TotalSubmissions,
+		&i.GradedCount,
+		&i.UngradedCount,
+		&i.AvgScore,
+		&i.MaxScore,
+		&i.MinScore,
+	)
+	return i, err
+}
+
+const getExamProblemDetails = `-- name: GetExamProblemDetails :one
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       ep.scoring_mode, ep.reference_answer, 
+       p.title, p.description, p.difficulty, p.init_script, p.solution_query
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1 AND ep.id = $2
+`
+
+type GetExamProblemDetailsParams struct {
+	ExamID int64 `json:"examId"`
+	ID     int64 `json:"id"`
+}
+
+type GetExamProblemDetailsRow struct {
+	ID              int64   `json:"id"`
+	ExamID          int64   `json:"examId"`
+	ProblemID       int64   `json:"problemId"`
+	Points          *int32  `json:"points"`
+	SortOrder       *int32  `json:"sortOrder"`
+	ScoringMode     *string `json:"scoringMode"`
+	ReferenceAnswer *string `json:"referenceAnswer"`
+	Title           string  `json:"title"`
+	Description     string  `json:"description"`
+	Difficulty      string  `json:"difficulty"`
+	InitScript      string  `json:"initScript"`
+	SolutionQuery   string  `json:"solutionQuery"`
+}
+
+func (q *Queries) GetExamProblemDetails(ctx context.Context, arg GetExamProblemDetailsParams) (GetExamProblemDetailsRow, error) {
+	row := q.db.QueryRow(ctx, getExamProblemDetails, arg.ExamID, arg.ID)
+	var i GetExamProblemDetailsRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.ProblemID,
+		&i.Points,
+		&i.SortOrder,
+		&i.ScoringMode,
+		&i.ReferenceAnswer,
+		&i.Title,
+		&i.Description,
+		&i.Difficulty,
+		&i.InitScript,
+		&i.SolutionQuery,
+	)
+	return i, err
+}
+
+const getExamProblemsForStudent = `-- name: GetExamProblemsForStudent :many
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       ep.scoring_mode, p.title, p.description, p.difficulty
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1
+ORDER BY ep.sort_order ASC
+`
+
+type GetExamProblemsForStudentRow struct {
+	ID          int64   `json:"id"`
+	ExamID      int64   `json:"examId"`
+	ProblemID   int64   `json:"problemId"`
+	Points      *int32  `json:"points"`
+	SortOrder   *int32  `json:"sortOrder"`
+	ScoringMode *string `json:"scoringMode"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Difficulty  string  `json:"difficulty"`
+}
+
+func (q *Queries) GetExamProblemsForStudent(ctx context.Context, examID int64) ([]GetExamProblemsForStudentRow, error) {
+	rows, err := q.db.Query(ctx, getExamProblemsForStudent, examID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetExamProblemsForStudentRow{}
+	for rows.Next() {
+		var i GetExamProblemsForStudentRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExamID,
+			&i.ProblemID,
+			&i.Points,
+			&i.SortOrder,
+			&i.ScoringMode,
+			&i.Title,
+			&i.Description,
+			&i.Difficulty,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExamResults = `-- name: GetExamResults :many
 SELECT 
     u.id as user_id, u.full_name, u.student_id,
@@ -340,7 +588,7 @@ func (q *Queries) GetExamResults(ctx context.Context, examID int64) ([]GetExamRe
 }
 
 const getExamSubmission = `-- name: GetExamSubmission :one
-SELECT id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at FROM exam_submissions
+SELECT id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at FROM exam_submissions
 WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
 ORDER BY submitted_at DESC
 LIMIT 1
@@ -371,6 +619,70 @@ func (q *Queries) GetExamSubmission(ctx context.Context, arg GetExamSubmissionPa
 		&i.Score,
 		&i.AttemptNumber,
 		&i.SubmittedAt,
+		&i.GradedBy,
+		&i.GradedAt,
+	)
+	return i, err
+}
+
+const getExamSubmissionForGrading = `-- name: GetExamSubmissionForGrading :one
+
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, ep.scoring_mode, ep.reference_answer, ep.points as max_points
+FROM exam_submissions es
+JOIN exam_problems ep ON ep.id = es.exam_problem_id
+WHERE es.id = $1
+`
+
+type GetExamSubmissionForGradingRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	GradedBy        *int64             `json:"gradedBy"`
+	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
+	ScoringMode     *string            `json:"scoringMode"`
+	ReferenceAnswer *string            `json:"referenceAnswer"`
+	MaxPoints       *int32             `json:"maxPoints"`
+}
+
+// =============================================
+// GRADING QUERIES
+// =============================================
+func (q *Queries) GetExamSubmissionForGrading(ctx context.Context, id int64) (GetExamSubmissionForGradingRow, error) {
+	row := q.db.QueryRow(ctx, getExamSubmissionForGrading, id)
+	var i GetExamSubmissionForGradingRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.ExamProblemID,
+		&i.UserID,
+		&i.Code,
+		&i.DatabaseType,
+		&i.Status,
+		&i.ExecutionTimeMs,
+		&i.ExpectedOutput,
+		&i.ActualOutput,
+		&i.ErrorMessage,
+		&i.IsCorrect,
+		&i.Score,
+		&i.AttemptNumber,
+		&i.SubmittedAt,
+		&i.GradedBy,
+		&i.GradedAt,
+		&i.ScoringMode,
+		&i.ReferenceAnswer,
+		&i.MaxPoints,
 	)
 	return i, err
 }
@@ -418,6 +730,102 @@ func (q *Queries) GetParticipant(ctx context.Context, arg GetParticipantParams) 
 		&i.StudentID,
 	)
 	return i, err
+}
+
+const getParticipantStatus = `-- name: GetParticipantStatus :one
+SELECT id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
+FROM exam_participants
+WHERE exam_id = $1 AND user_id = $2
+`
+
+type GetParticipantStatusParams struct {
+	ExamID int64 `json:"examId"`
+	UserID int64 `json:"userId"`
+}
+
+func (q *Queries) GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (ExamParticipant, error) {
+	row := q.db.QueryRow(ctx, getParticipantStatus, arg.ExamID, arg.UserID)
+	var i ExamParticipant
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.UserID,
+		&i.StartedAt,
+		&i.SubmittedAt,
+		&i.TotalScore,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getStudentSubmissionsForProblem = `-- name: GetStudentSubmissionsForProblem :many
+SELECT id, exam_id, exam_problem_id, user_id, code, database_type,
+       status, execution_time_ms, expected_output, actual_output,
+       error_message, is_correct, score, attempt_number, submitted_at
+FROM exam_submissions
+WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
+ORDER BY attempt_number ASC
+`
+
+type GetStudentSubmissionsForProblemParams struct {
+	ExamID        int64 `json:"examId"`
+	ExamProblemID int64 `json:"examProblemId"`
+	UserID        int64 `json:"userId"`
+}
+
+type GetStudentSubmissionsForProblemRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+}
+
+func (q *Queries) GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]GetStudentSubmissionsForProblemRow, error) {
+	rows, err := q.db.Query(ctx, getStudentSubmissionsForProblem, arg.ExamID, arg.ExamProblemID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetStudentSubmissionsForProblemRow{}
+	for rows.Next() {
+		var i GetStudentSubmissionsForProblemRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExamID,
+			&i.ExamProblemID,
+			&i.UserID,
+			&i.Code,
+			&i.DatabaseType,
+			&i.Status,
+			&i.ExecutionTimeMs,
+			&i.ExpectedOutput,
+			&i.ActualOutput,
+			&i.ErrorMessage,
+			&i.IsCorrect,
+			&i.Score,
+			&i.AttemptNumber,
+			&i.SubmittedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listExamParticipants = `-- name: ListExamParticipants :many
@@ -475,7 +883,7 @@ func (q *Queries) ListExamParticipants(ctx context.Context, examID int64) ([]Lis
 }
 
 const listExamProblems = `-- name: ListExamProblems :many
-SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, p.title, p.slug, p.difficulty, p.description
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, ep.scoring_mode, ep.reference_answer, p.title, p.slug, p.difficulty, p.description
 FROM exam_problems ep
 JOIN problems p ON p.id = ep.problem_id
 WHERE ep.exam_id = $1
@@ -483,15 +891,17 @@ ORDER BY ep.sort_order ASC
 `
 
 type ListExamProblemsRow struct {
-	ID          int64  `json:"id"`
-	ExamID      int64  `json:"examId"`
-	ProblemID   int64  `json:"problemId"`
-	Points      *int32 `json:"points"`
-	SortOrder   *int32 `json:"sortOrder"`
-	Title       string `json:"title"`
-	Slug        string `json:"slug"`
-	Difficulty  string `json:"difficulty"`
-	Description string `json:"description"`
+	ID              int64   `json:"id"`
+	ExamID          int64   `json:"examId"`
+	ProblemID       int64   `json:"problemId"`
+	Points          *int32  `json:"points"`
+	SortOrder       *int32  `json:"sortOrder"`
+	ScoringMode     *string `json:"scoringMode"`
+	ReferenceAnswer *string `json:"referenceAnswer"`
+	Title           string  `json:"title"`
+	Slug            string  `json:"slug"`
+	Difficulty      string  `json:"difficulty"`
+	Description     string  `json:"description"`
 }
 
 func (q *Queries) ListExamProblems(ctx context.Context, examID int64) ([]ListExamProblemsRow, error) {
@@ -509,6 +919,8 @@ func (q *Queries) ListExamProblems(ctx context.Context, examID int64) ([]ListExa
 			&i.ProblemID,
 			&i.Points,
 			&i.SortOrder,
+			&i.ScoringMode,
+			&i.ReferenceAnswer,
 			&i.Title,
 			&i.Slug,
 			&i.Difficulty,
@@ -752,8 +1164,87 @@ func (q *Queries) ListPublicExams(ctx context.Context, arg ListPublicExamsParams
 	return items, nil
 }
 
+const listUngradedExamSubmissions = `-- name: ListUngradedExamSubmissions :many
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, ep.scoring_mode, ep.reference_answer, ep.points as max_points,
+    p.title as problem_title, u.full_name as student_name
+FROM exam_submissions es
+JOIN exam_problems ep ON ep.id = es.exam_problem_id
+JOIN problems p ON p.id = ep.problem_id
+JOIN users u ON u.id = es.user_id
+WHERE es.exam_id = $1 AND (es.graded_by IS NULL OR ep.scoring_mode = 'manual')
+ORDER BY es.submitted_at ASC
+`
+
+type ListUngradedExamSubmissionsRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	GradedBy        *int64             `json:"gradedBy"`
+	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
+	ScoringMode     *string            `json:"scoringMode"`
+	ReferenceAnswer *string            `json:"referenceAnswer"`
+	MaxPoints       *int32             `json:"maxPoints"`
+	ProblemTitle    string             `json:"problemTitle"`
+	StudentName     string             `json:"studentName"`
+}
+
+func (q *Queries) ListUngradedExamSubmissions(ctx context.Context, examID int64) ([]ListUngradedExamSubmissionsRow, error) {
+	rows, err := q.db.Query(ctx, listUngradedExamSubmissions, examID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUngradedExamSubmissionsRow{}
+	for rows.Next() {
+		var i ListUngradedExamSubmissionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExamID,
+			&i.ExamProblemID,
+			&i.UserID,
+			&i.Code,
+			&i.DatabaseType,
+			&i.Status,
+			&i.ExecutionTimeMs,
+			&i.ExpectedOutput,
+			&i.ActualOutput,
+			&i.ErrorMessage,
+			&i.IsCorrect,
+			&i.Score,
+			&i.AttemptNumber,
+			&i.SubmittedAt,
+			&i.GradedBy,
+			&i.GradedAt,
+			&i.ScoringMode,
+			&i.ReferenceAnswer,
+			&i.MaxPoints,
+			&i.ProblemTitle,
+			&i.StudentName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserExamSubmissions = `-- name: ListUserExamSubmissions :many
-SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, ep.points as max_points, p.title as problem_title
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, ep.points as max_points, p.title as problem_title
 FROM exam_submissions es
 JOIN exam_problems ep ON ep.id = es.exam_problem_id
 JOIN problems p ON p.id = ep.problem_id
@@ -782,6 +1273,8 @@ type ListUserExamSubmissionsRow struct {
 	Score           pgtype.Numeric     `json:"score"`
 	AttemptNumber   *int32             `json:"attemptNumber"`
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	GradedBy        *int64             `json:"gradedBy"`
+	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
 	MaxPoints       *int32             `json:"maxPoints"`
 	ProblemTitle    string             `json:"problemTitle"`
 }
@@ -811,6 +1304,8 @@ func (q *Queries) ListUserExamSubmissions(ctx context.Context, arg ListUserExamS
 			&i.Score,
 			&i.AttemptNumber,
 			&i.SubmittedAt,
+			&i.GradedBy,
+			&i.GradedAt,
 			&i.MaxPoints,
 			&i.ProblemTitle,
 		); err != nil {
@@ -953,6 +1448,34 @@ func (q *Queries) StartExam(ctx context.Context, arg StartExamParams) (ExamParti
 	return i, err
 }
 
+const startExamParticipant = `-- name: StartExamParticipant :one
+UPDATE exam_participants
+SET started_at = NOW(), status = 'in_progress'
+WHERE exam_id = $1 AND user_id = $2 AND status = 'registered'
+RETURNING id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
+`
+
+type StartExamParticipantParams struct {
+	ExamID int64 `json:"examId"`
+	UserID int64 `json:"userId"`
+}
+
+func (q *Queries) StartExamParticipant(ctx context.Context, arg StartExamParticipantParams) (ExamParticipant, error) {
+	row := q.db.QueryRow(ctx, startExamParticipant, arg.ExamID, arg.UserID)
+	var i ExamParticipant
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.UserID,
+		&i.StartedAt,
+		&i.SubmittedAt,
+		&i.TotalScore,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const submitExam = `-- name: SubmitExam :one
 UPDATE exam_participants SET 
     status = 'submitted',
@@ -968,6 +1491,34 @@ type SubmitExamParams struct {
 
 func (q *Queries) SubmitExam(ctx context.Context, arg SubmitExamParams) (ExamParticipant, error) {
 	row := q.db.QueryRow(ctx, submitExam, arg.ExamID, arg.UserID)
+	var i ExamParticipant
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.UserID,
+		&i.StartedAt,
+		&i.SubmittedAt,
+		&i.TotalScore,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const submitExamParticipant = `-- name: SubmitExamParticipant :one
+UPDATE exam_participants
+SET submitted_at = NOW(), status = 'submitted'
+WHERE exam_id = $1 AND user_id = $2
+RETURNING id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
+`
+
+type SubmitExamParticipantParams struct {
+	ExamID int64 `json:"examId"`
+	UserID int64 `json:"userId"`
+}
+
+func (q *Queries) SubmitExamParticipant(ctx context.Context, arg SubmitExamParticipantParams) (ExamParticipant, error) {
+	row := q.db.QueryRow(ctx, submitExamParticipant, arg.ExamID, arg.UserID)
 	var i ExamParticipant
 	err := row.Scan(
 		&i.ID,
@@ -1052,7 +1603,7 @@ func (q *Queries) UpdateExam(ctx context.Context, arg UpdateExamParams) (Exam, e
 const updateExamProblemPoints = `-- name: UpdateExamProblemPoints :one
 UPDATE exam_problems SET points = $3
 WHERE exam_id = $1 AND problem_id = $2
-RETURNING id, exam_id, problem_id, points, sort_order
+RETURNING id, exam_id, problem_id, points, sort_order, scoring_mode, reference_answer
 `
 
 type UpdateExamProblemPointsParams struct {
@@ -1070,6 +1621,8 @@ func (q *Queries) UpdateExamProblemPoints(ctx context.Context, arg UpdateExamPro
 		&i.ProblemID,
 		&i.Points,
 		&i.SortOrder,
+		&i.ScoringMode,
+		&i.ReferenceAnswer,
 	)
 	return i, err
 }
@@ -1105,6 +1658,124 @@ func (q *Queries) UpdateExamStatus(ctx context.Context, arg UpdateExamStatusPara
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateExamSubmissionGrade = `-- name: UpdateExamSubmissionGrade :one
+UPDATE exam_submissions SET
+    score = $2,
+    graded_by = $3,
+    graded_at = NOW(),
+    status = 'graded'
+WHERE id = $1
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at
+`
+
+type UpdateExamSubmissionGradeParams struct {
+	ID       int64          `json:"id"`
+	Score    pgtype.Numeric `json:"score"`
+	GradedBy *int64         `json:"gradedBy"`
+}
+
+func (q *Queries) UpdateExamSubmissionGrade(ctx context.Context, arg UpdateExamSubmissionGradeParams) (ExamSubmission, error) {
+	row := q.db.QueryRow(ctx, updateExamSubmissionGrade, arg.ID, arg.Score, arg.GradedBy)
+	var i ExamSubmission
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.ExamProblemID,
+		&i.UserID,
+		&i.Code,
+		&i.DatabaseType,
+		&i.Status,
+		&i.ExecutionTimeMs,
+		&i.ExpectedOutput,
+		&i.ActualOutput,
+		&i.ErrorMessage,
+		&i.IsCorrect,
+		&i.Score,
+		&i.AttemptNumber,
+		&i.SubmittedAt,
+		&i.GradedBy,
+		&i.GradedAt,
+	)
+	return i, err
+}
+
+const updateExamSubmissionWithResult = `-- name: UpdateExamSubmissionWithResult :one
+UPDATE exam_submissions
+SET 
+    status = $2,
+    actual_output = $3,
+    expected_output = $4,
+    error_message = $5,
+    execution_time_ms = $6,
+    is_correct = $7,
+    score = $8
+WHERE id = $1
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type,
+          status, execution_time_ms, expected_output, actual_output,
+          error_message, is_correct, score, attempt_number, submitted_at
+`
+
+type UpdateExamSubmissionWithResultParams struct {
+	ID              int64          `json:"id"`
+	Status          string         `json:"status"`
+	ActualOutput    []byte         `json:"actualOutput"`
+	ExpectedOutput  []byte         `json:"expectedOutput"`
+	ErrorMessage    *string        `json:"errorMessage"`
+	ExecutionTimeMs *int32         `json:"executionTimeMs"`
+	IsCorrect       *bool          `json:"isCorrect"`
+	Score           pgtype.Numeric `json:"score"`
+}
+
+type UpdateExamSubmissionWithResultRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+}
+
+func (q *Queries) UpdateExamSubmissionWithResult(ctx context.Context, arg UpdateExamSubmissionWithResultParams) (UpdateExamSubmissionWithResultRow, error) {
+	row := q.db.QueryRow(ctx, updateExamSubmissionWithResult,
+		arg.ID,
+		arg.Status,
+		arg.ActualOutput,
+		arg.ExpectedOutput,
+		arg.ErrorMessage,
+		arg.ExecutionTimeMs,
+		arg.IsCorrect,
+		arg.Score,
+	)
+	var i UpdateExamSubmissionWithResultRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.ExamProblemID,
+		&i.UserID,
+		&i.Code,
+		&i.DatabaseType,
+		&i.Status,
+		&i.ExecutionTimeMs,
+		&i.ExpectedOutput,
+		&i.ActualOutput,
+		&i.ErrorMessage,
+		&i.IsCorrect,
+		&i.Score,
+		&i.AttemptNumber,
+		&i.SubmittedAt,
 	)
 	return i, err
 }
