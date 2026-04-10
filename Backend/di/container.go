@@ -11,7 +11,11 @@ import (
 	pdfHttp "backend/internals/pdf/controller/http"
 	pdfRepository "backend/internals/pdf/repository"
 	pdfUsecase "backend/internals/pdf/usecase"
+	problemRepo "backend/internals/problem/repository"
 	httpServer "backend/internals/server/http"
+	submissionConsumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
+	submissionRepository "backend/internals/submission/repository"
+	submissionUsecase "backend/internals/submission/usecase"
 	"backend/pkgs/ai"
 	"backend/pkgs/jwt"
 	"backend/pkgs/kafka"
@@ -57,6 +61,12 @@ func NewContainer() (*Container, error) {
 		providePDFRepository,
 		providePDFUploadManager,
 		providePDFHandler,
+
+		// Submission & Grading Services (Phase 4)
+		provideSubmissionRepository,
+		provideProblemRepository,
+		provideGradingService,
+		provideGradingConsumer,
 
 		// Server
 		httpServer.NewServer,
@@ -205,6 +215,32 @@ func providePDFUploadManager(
 
 func providePDFHandler(uploadManager pdfUsecase.IUploadManager) *pdfHttp.PDFHandler {
 	return pdfHttp.NewPDFHandler(uploadManager)
+}
+
+// ===== Submission & Grading Services =====
+
+func provideSubmissionRepository(database *db.Database) submissionRepository.ISubmissionRepository {
+	return submissionRepository.NewSubmissionRepository(database)
+}
+
+func provideProblemRepository(database *db.Database) problemRepo.IProblemRepository {
+	return problemRepo.NewProblemRepository(database)
+}
+
+func provideGradingService(
+	subRepo submissionRepository.ISubmissionRepository,
+	probRepo problemRepo.IProblemRepository,
+	queryRunner runner.Runner,
+) submissionUsecase.IGradingService {
+	return submissionUsecase.NewGradingService(subRepo, probRepo, queryRunner)
+}
+
+func provideGradingConsumer(
+	kafkaClient kafka.IKafka,
+	database *db.Database,
+	gradingService submissionUsecase.IGradingService,
+) *submissionConsumer.GradingConsumer {
+	return submissionConsumer.NewGradingConsumer(kafkaClient, database, gradingService)
 }
 
 // Invoke runs a function with dependencies injected
