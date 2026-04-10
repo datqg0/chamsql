@@ -1,4 +1,28 @@
 -- =============================================
+-- PERMISSIONS QUERIES
+-- =============================================
+
+-- name: GetPermissionByID :one
+SELECT * FROM permissions WHERE id = $1;
+
+-- name: GetPermissionByName :one
+SELECT * FROM permissions WHERE name = $1;
+
+-- name: ListPermissions :many
+SELECT * FROM permissions ORDER BY category, name ASC;
+
+-- name: ListPermissionsByCategory :many
+SELECT * FROM permissions WHERE category = $1 ORDER BY name ASC;
+
+-- name: CreatePermission :one
+INSERT INTO permissions (name, description, category)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- name: DeletePermission :exec
+DELETE FROM permissions WHERE id = $1;
+
+-- =============================================
 -- ROLES QUERIES
 -- =============================================
 
@@ -9,44 +33,20 @@ SELECT * FROM roles WHERE id = $1;
 SELECT * FROM roles WHERE name = $1;
 
 -- name: ListRoles :many
-SELECT * FROM roles ORDER BY id ASC;
+SELECT * FROM roles ORDER BY name ASC;
 
 -- name: CreateRole :one
-INSERT INTO roles (name, description, is_extensible)
+INSERT INTO roles (name, description, is_system)
 VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: UpdateRole :one
-UPDATE roles SET name = COALESCE(sqlc.narg('name'), name),
-                 description = COALESCE(sqlc.narg('description'), description),
-                 is_extensible = COALESCE(sqlc.narg('is_extensible'), is_extensible),
-                 updated_at = CURRENT_TIMESTAMP
+UPDATE roles SET description = COALESCE(sqlc.narg('description'), description)
 WHERE id = $1
 RETURNING *;
 
 -- name: DeleteRole :exec
-DELETE FROM roles WHERE id = $1;
-
--- =============================================
--- PERMISSIONS QUERIES
--- =============================================
-
--- name: GetPermissionByID :one
-SELECT * FROM permissions WHERE id = $1;
-
--- name: ListPermissions :many
-SELECT * FROM permissions ORDER BY resource_type, action ASC;
-
--- name: ListPermissionsByResourceType :many
-SELECT * FROM permissions WHERE resource_type = $1 ORDER BY action ASC;
-
--- name: CreatePermission :one
-INSERT INTO permissions (resource_type, action, description)
-VALUES ($1, $2, $3)
-RETURNING *;
-
--- name: DeletePermission :exec
-DELETE FROM permissions WHERE id = $1;
+DELETE FROM roles WHERE id = $1 AND is_system = false;
 
 -- =============================================
 -- ROLE PERMISSIONS QUERIES
@@ -56,7 +56,7 @@ DELETE FROM permissions WHERE id = $1;
 SELECT p.* FROM permissions p
 JOIN role_permissions rp ON p.id = rp.permission_id
 WHERE rp.role_id = $1
-ORDER BY p.resource_type, p.action;
+ORDER BY p.category, p.name;
 
 -- name: GrantPermissionToRole :one
 INSERT INTO role_permissions (role_id, permission_id)
@@ -67,13 +67,11 @@ RETURNING *;
 -- name: RevokePermissionFromRole :exec
 DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2;
 
--- name: HasPermission :one
+-- name: RoleHasPermission :one
 SELECT EXISTS(
   SELECT 1 FROM role_permissions rp
   JOIN permissions p ON rp.permission_id = p.id
-  WHERE rp.role_id = $1
-    AND p.resource_type = $2
-    AND p.action = $3
+  WHERE rp.role_id = $1 AND p.name = $2
 ) AS has_permission;
 
 -- =============================================
@@ -104,78 +102,83 @@ SELECT EXISTS(
   WHERE user_id = $1 AND role_id = $2
 ) AS is_in_role;
 
--- name: CheckUserHasPermission :one
+-- name: UserHasPermission :one
 SELECT EXISTS(
   SELECT 1 FROM user_roles ur
   JOIN role_permissions rp ON ur.role_id = rp.role_id
   JOIN permissions p ON rp.permission_id = p.id
-  WHERE ur.user_id = $1
-    AND p.resource_type = $2
-    AND p.action = $3
+  WHERE ur.user_id = $1 AND p.name = $2
 ) AS has_permission;
 
 -- =============================================
--- RESOURCE ACCESS CONTROL QUERIES
+-- PERMISSION GRANTS QUERIES
 -- =============================================
 
--- name: CreateResourceAccess :one
-INSERT INTO resource_access_control (resource_type, resource_id, user_id, permission_type, granted_by)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (resource_type, resource_id, user_id, permission_type) DO NOTHING
+-- name: GetPermissionGrant :one
+SELECT * FROM permission_grants
+WHERE user_id = $1 AND resource_type = $2 AND resource_id = $3 AND permission = $4;
+
+-- name: ListUserPermissionGrants :many
+SELECT * FROM permission_grants
+WHERE user_id = $1
+ORDER BY resource_type, resource_id, permission;
+
+-- name: ListResourcePermissionGrants :many
+SELECT * FROM permission_grants
+WHERE resource_type = $1 AND resource_id = $2
+ORDER BY user_id, permission;
+
+-- name: CreatePermissionGrant :one
+INSERT INTO permission_grants (user_id, resource_type, resource_id, permission, granted_by, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (user_id, resource_type, resource_id, permission) DO UPDATE
+SET expires_at = EXCLUDED.expires_at, granted_by = EXCLUDED.granted_by
 RETURNING *;
 
--- name: GetResourceAccess :many
-SELECT * FROM resource_access_control
-WHERE resource_type = $1 AND resource_id = $2
-ORDER BY permission_type, user_id;
+-- name: RevokePermissionGrant :exec
+DELETE FROM permission_grants
+WHERE user_id = $1 AND resource_type = $2 AND resource_id = $3 AND permission = $4;
 
--- name: GetUserResourceAccess :many
-SELECT * FROM resource_access_control
-WHERE user_id = $1 AND resource_type = $2
-ORDER BY permission_type;
-
--- name: CheckResourceAccess :one
-SELECT EXISTS(
-  SELECT 1 FROM resource_access_control
-  WHERE resource_type = $1
-    AND resource_id = $2
-    AND user_id = $3
-    AND permission_type IN ('owner', 'editor', 'viewer')
-) AS has_access;
-
--- name: CheckResourceOwner :one
-SELECT EXISTS(
-  SELECT 1 FROM resource_access_control
-  WHERE resource_type = $1
-    AND resource_id = $2
-    AND user_id = $3
-    AND permission_type = 'owner'
-) AS is_owner;
-
--- name: RevokeResourceAccess :exec
-DELETE FROM resource_access_control
-WHERE resource_type = $1 AND resource_id = $2 AND user_id = $3;
-
--- name: RevokeAllResourceAccess :exec
-DELETE FROM resource_access_control
+-- name: RevokeAllResourcePermissionGrants :exec
+DELETE FROM permission_grants
 WHERE resource_type = $1 AND resource_id = $2;
+
+-- name: CheckPermissionGrant :one
+SELECT EXISTS(
+  SELECT 1 FROM permission_grants
+  WHERE user_id = $1
+    AND resource_type = $2
+    AND resource_id = $3
+    AND permission = $4
+    AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+) AS has_grant;
+
+-- name: CleanupExpiredPermissionGrants :exec
+DELETE FROM permission_grants
+WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP;
 
 -- =============================================
 -- AUDIT LOG QUERIES
 -- =============================================
 
 -- name: CreateAuditLog :one
-INSERT INTO permission_audit_log (action, target_user_id, target_role_id, target_resource_type, target_resource_id, performed_by, details)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO audit_logs (user_id, action, resource_type, resource_id, old_value, new_value, reason, ip_address, user_agent)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
--- name: GetAuditLog :many
-SELECT * FROM permission_audit_log
+-- name: ListAuditLogs :many
+SELECT * FROM audit_logs
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2;
 
--- name: GetUserAuditLog :many
-SELECT * FROM permission_audit_log
-WHERE target_user_id = $1 OR performed_by = $1
+-- name: ListUserAuditLogs :many
+SELECT * FROM audit_logs
+WHERE user_id = $1 OR old_value->>'user_id' = $2::text OR new_value->>'user_id' = $2::text
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
+LIMIT $3 OFFSET $4;
+
+-- name: ListResourceAuditLogs :many
+SELECT * FROM audit_logs
+WHERE resource_type = $1 AND resource_id = $2
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4;
