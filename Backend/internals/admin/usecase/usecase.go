@@ -272,22 +272,19 @@ func (u *adminUseCase) GrantRoleToUser(ctx context.Context, userID int64, roleID
 	}
 
 	_, err = u.queries.GrantRoleToUser(ctx, models.GrantRoleToUserParams{
-		UserID:     int32(userID),
+		UserID:     userID,
 		RoleID:     roleID,
-		AssignedBy: ptrInt32(int32(performedBy)),
+		AssignedBy: ptrInt64(performedBy),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to grant role: %w", err)
 	}
 
 	// Log audit
-	targetUserID := int32(userID)
 	_, _ = u.queries.CreateAuditLog(ctx, models.CreateAuditLogParams{
-		Action:       "role_assigned",
-		TargetUserID: &targetUserID,
-		TargetRoleID: &roleID,
-		PerformedBy:  int32(performedBy),
-		Details:      []byte{},
+		UserID: ptrInt64(performedBy),
+		Action: "role_assigned",
+		Reason: strPtr("Role assignment via admin panel"),
 	})
 
 	return nil
@@ -311,7 +308,7 @@ func (u *adminUseCase) RevokeRoleFromUser(ctx context.Context, userID int64, rol
 	}
 
 	err = u.queries.RevokeRoleFromUser(ctx, models.RevokeRoleFromUserParams{
-		UserID: int32(userID),
+		UserID: userID,
 		RoleID: roleID,
 	})
 	if err != nil {
@@ -330,7 +327,7 @@ func (u *adminUseCase) GetUserRoles(ctx context.Context, userID int64) (*dto.Use
 		return nil, errors.New("user not found")
 	}
 
-	roles, err := u.queries.GetUserRoles(ctx, int32(userID))
+	roles, err := u.queries.GetUserRoles(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user roles: %w", err)
 	}
@@ -364,10 +361,10 @@ func (u *adminUseCase) ListPermissions(ctx context.Context) (*dto.ListPermission
 	permDetails := make([]dto.PermissionDetail, 0, len(perms))
 	for _, perm := range perms {
 		permDetails = append(permDetails, dto.PermissionDetail{
-			ID:           perm.ID,
-			ResourceType: perm.ResourceType,
-			Action:       perm.Action,
-			Description:  ptrToStr(perm.Description),
+			ID:          perm.ID,
+			Name:        perm.Name,
+			Category:    ptrToStr(perm.Category),
+			Description: ptrToStr(perm.Description),
 		})
 	}
 
@@ -397,10 +394,10 @@ func (u *adminUseCase) GetRolePermissions(ctx context.Context, roleID int32) (*d
 	permDetails := make([]dto.PermissionDetail, 0, len(perms))
 	for _, perm := range perms {
 		permDetails = append(permDetails, dto.PermissionDetail{
-			ID:           perm.ID,
-			ResourceType: perm.ResourceType,
-			Action:       perm.Action,
-			Description:  ptrToStr(perm.Description),
+			ID:          perm.ID,
+			Name:        perm.Name,
+			Category:    ptrToStr(perm.Category),
+			Description: ptrToStr(perm.Description),
 		})
 	}
 
@@ -438,12 +435,10 @@ func (u *adminUseCase) GrantPermissionToRole(ctx context.Context, roleID int32, 
 	}
 
 	// Log audit
-	targetRoleID := roleID
 	_, _ = u.queries.CreateAuditLog(ctx, models.CreateAuditLogParams{
-		Action:       "permission_granted",
-		TargetRoleID: &targetRoleID,
-		PerformedBy:  int32(performedBy),
-		Details:      jsonStringify(fmt.Sprintf("Permission %d granted to role %d", permissionID, roleID)),
+		UserID: ptrInt64(performedBy),
+		Action: "permission_granted",
+		Reason: strPtr(fmt.Sprintf("Permission %d granted to role %d", permissionID, roleID)),
 	})
 
 	return nil
@@ -488,7 +483,7 @@ func (u *adminUseCase) GetAuditLog(ctx context.Context, page, pageSize int) (*dt
 	offset := int32((page - 1) * pageSize)
 	limit := int32(pageSize)
 
-	logs, err := u.queries.GetAuditLog(ctx, models.GetAuditLogParams{
+	logs, err := u.queries.ListAuditLogs(ctx, models.ListAuditLogsParams{
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -499,24 +494,17 @@ func (u *adminUseCase) GetAuditLog(ctx context.Context, page, pageSize int) (*dt
 	entries := make([]dto.AuditLogEntry, 0, len(logs))
 	for _, log := range logs {
 		entry := dto.AuditLogEntry{
-			ID:               int64(log.ID),
-			Action:           log.Action,
-			PerformedBy:      int64(log.PerformedBy),
-			PerformedByEmail: "",
-			Details:          string(log.Details),
-			CreatedAt:        log.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
-		}
-
-		// Fill in optional fields
-		if log.TargetUserID != nil {
-			uid := int64(*log.TargetUserID)
-			entry.TargetUserID = &uid
-		}
-		if log.TargetRoleID != nil {
-			entry.TargetRoleID = log.TargetRoleID
-		}
-		if log.TargetResourceID != nil {
-			entry.TargetResourceID = log.TargetResourceID
+			ID:           log.ID,
+			Action:       log.Action,
+			UserID:       log.UserID,
+			ResourceType: log.ResourceType,
+			ResourceID:   log.ResourceID,
+			OldValue:     string(log.OldValue),
+			NewValue:     string(log.NewValue),
+			Reason:       log.Reason,
+			IpAddress:    log.IpAddress,
+			UserAgent:    log.UserAgent,
+			CreatedAt:    log.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
 		}
 
 		entries = append(entries, entry)
@@ -556,6 +544,10 @@ func ptrToBool(b *bool) bool {
 }
 
 func ptrInt32(val int32) *int32 {
+	return &val
+}
+
+func ptrInt64(val int64) *int64 {
 	return &val
 }
 

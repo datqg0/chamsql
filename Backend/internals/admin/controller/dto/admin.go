@@ -112,10 +112,10 @@ type RoleDetail struct {
 
 // PermissionDetail - Permission information
 type PermissionDetail struct {
-	ID           int32  `json:"id"`
-	ResourceType string `json:"resourceType"`
-	Action       string `json:"action"`
-	Description  string `json:"description"`
+	ID          int32  `json:"id"`
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	Description string `json:"description"`
 }
 
 // RolePermissionsResponse - Show all permissions assigned to a role
@@ -138,15 +138,17 @@ type ListPermissionsResponse struct {
 
 // AuditLogEntry - Single entry in permission audit log
 type AuditLogEntry struct {
-	ID               int64  `json:"id"`
-	Action           string `json:"action"` // role_assigned, role_revoked, permission_granted, etc
-	TargetUserID     *int64 `json:"targetUserId,omitempty"`
-	TargetRoleID     *int32 `json:"targetRoleId,omitempty"`
-	TargetResourceID *int64 `json:"targetResourceId,omitempty"`
-	PerformedBy      int64  `json:"performedBy"`
-	PerformedByEmail string `json:"performedByEmail"`
-	Details          string `json:"details,omitempty"` // JSON string
-	CreatedAt        string `json:"createdAt"`
+	ID           int64   `json:"id"`
+	Action       string  `json:"action"` // role_assigned, role_revoked, permission_granted, etc
+	UserID       *int64  `json:"userId,omitempty"`
+	ResourceType *string `json:"resourceType,omitempty"`
+	ResourceID   *int64  `json:"resourceId,omitempty"`
+	OldValue     string  `json:"oldValue,omitempty"` // JSON string
+	NewValue     string  `json:"newValue,omitempty"` // JSON string
+	Reason       *string `json:"reason,omitempty"`
+	IpAddress    *string `json:"ipAddress,omitempty"`
+	UserAgent    *string `json:"userAgent,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
 }
 
 // AuditLogResponse - Paginated audit log

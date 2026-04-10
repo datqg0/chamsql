@@ -12,7 +12,7 @@ import (
 
 // PermissionMiddleware checks if user has permission for resource+action
 // Usage: router.POST("/exams", authMiddleware, PermissionMiddleware("exam", "add"), handler)
-func PermissionMiddleware(permService permissions.PermissionService, resourceType, action string) gin.HandlerFunc {
+func PermissionMiddleware(permService permissions.PermissionService, permissionName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
 		if userID == 0 {
@@ -22,7 +22,7 @@ func PermissionMiddleware(permService permissions.PermissionService, resourceTyp
 		}
 
 		// Check if user has permission
-		hasPermission, err := permService.HasPermission(c.Request.Context(), userID, resourceType, action)
+		hasPermission, err := permService.HasPermission(c.Request.Context(), userID, permissionName)
 		if err != nil {
 			logger.Error("Permission check failed: %v", err)
 			c.JSON(500, gin.H{"error": "internal server error"})
@@ -31,10 +31,10 @@ func PermissionMiddleware(permService permissions.PermissionService, resourceTyp
 		}
 
 		if !hasPermission {
-			logger.Warn("User %d denied permission %s:%s", userID, resourceType, action)
+			logger.Warn("User %d denied permission %s", userID, permissionName)
 			c.JSON(403, gin.H{
 				"error":   "forbidden",
-				"message": fmt.Sprintf("You don't have permission to %s %s", action, resourceType),
+				"message": fmt.Sprintf("You don't have permission to %s", permissionName),
 			})
 			c.Abort()
 			return
@@ -110,8 +110,8 @@ func AdminMiddleware(permService permissions.PermissionService) gin.HandlerFunc 
 			return
 		}
 
-		// Check if user has any admin permission
-		hasAdmin, err := permService.HasPermission(c.Request.Context(), userID, "role", "view")
+		// Check if user has admin permission
+		hasAdmin, err := permService.HasPermission(c.Request.Context(), userID, "admin")
 		if err != nil || !hasAdmin {
 			logger.Warn("User %d attempted admin access", userID)
 			c.JSON(403, gin.H{"error": "admin access required"})
@@ -141,24 +141,21 @@ func OwnerOrAdminMiddleware(permService permissions.PermissionService, resourceT
 			return
 		}
 
-		// Check if user is owner
-		isOwner, err := permService.IsResourceOwner(c.Request.Context(), userID, resourceType, resourceID)
+		// Check if user can access/delete this resource
+		canAccess, err := permService.CanAccess(c.Request.Context(), userID, resourceType, "delete", resourceID)
 		if err != nil {
-			logger.Error("Owner check failed: %v", err)
+			logger.Error("Access check failed: %v", err)
 			c.JSON(500, gin.H{"error": "internal server error"})
 			c.Abort()
 			return
 		}
 
-		// If not owner, check if admin
-		if !isOwner {
-			isAdmin, err := permService.HasPermission(c.Request.Context(), userID, resourceType, "delete")
-			if err != nil || !isAdmin {
-				logger.Warn("User %d not owner of %s:%d", userID, resourceType, resourceID)
-				c.JSON(403, gin.H{"error": "forbidden"})
-				c.Abort()
-				return
-			}
+		// If can't access, deny
+		if !canAccess {
+			logger.Warn("User %d not authorized for %s:%d", userID, resourceType, resourceID)
+			c.JSON(403, gin.H{"error": "forbidden"})
+			c.Abort()
+			return
 		}
 
 		c.Next()

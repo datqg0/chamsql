@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"backend/db"
 	"backend/sql/models"
@@ -97,27 +98,19 @@ func (r *problemRepository) ListByDifficulty(ctx context.Context, difficulty str
 	})
 }
 
+// NOTE: ListAdmin queries not yet implemented - returns error until schema is ready
 func (r *problemRepository) ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error) {
-	return r.queries.ListAdminProblems(ctx, models.ListProblemsParams{
-		Limit:  limit,
-		Offset: offset,
-	})
+	return nil, errors.New("ListAdmin queries not yet implemented")
 }
 
+// NOTE: ListAdminByTopic queries not yet implemented - returns error until schema is ready
 func (r *problemRepository) ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error) {
-	return r.queries.ListAdminProblemsByTopic(ctx, models.ListProblemsByTopicParams{
-		TopicID: &topicID,
-		Limit:   limit,
-		Offset:  offset,
-	})
+	return nil, errors.New("ListAdminByTopic queries not yet implemented")
 }
 
+// NOTE: ListAdminByDifficulty queries not yet implemented - returns error until schema is ready
 func (r *problemRepository) ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error) {
-	return r.queries.ListAdminProblemsByDifficulty(ctx, models.ListProblemsByDifficultyParams{
-		Difficulty: difficulty,
-		Limit:      limit,
-		Offset:     offset,
-	})
+	return nil, errors.New("ListAdminByDifficulty queries not yet implemented")
 }
 
 func (r *problemRepository) Update(ctx context.Context, params models.UpdateProblemParams) (*models.Problem, error) {

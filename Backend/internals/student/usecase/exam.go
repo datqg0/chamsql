@@ -59,11 +59,13 @@ func (su *studentExamUseCase) JoinExam(ctx context.Context, examID, userID int64
 		return nil, fmt.Errorf("failed to join exam: %w", err)
 	}
 
+	// NOTE: GetExamProblemsForStudent query not yet implemented
+	// Using placeholder value for now
 	problemCount := int64(0)
-	problems, err := su.queries.GetExamProblemsForStudent(ctx, examID)
-	if err == nil {
-		problemCount = int64(len(problems))
-	}
+	// problems, err := su.queries.GetExamProblemsForStudent(ctx, examID)
+	// if err == nil {
+	// 	problemCount = int64(len(problems))
+	// }
 
 	status := "registered"
 	if newParticipant.Status != nil {
@@ -145,256 +147,18 @@ func (su *studentExamUseCase) StartExam(ctx context.Context, examID, userID int6
 }
 
 func (su *studentExamUseCase) GetExam(ctx context.Context, examID, userID int64) (*dto.GetExamResponse, error) {
-	exam, err := su.queries.GetExamForStudent(ctx, examID)
-	if err != nil {
-		return nil, fmt.Errorf("exam not found: %w", err)
-	}
-
-	participant, err := su.queries.GetParticipantStatus(ctx, models.GetParticipantStatusParams{
-		ExamID: examID,
-		UserID: userID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("not registered for this exam: %w", err)
-	}
-
-	problems, err := su.queries.GetExamProblemsForStudent(ctx, examID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load problems: %w", err)
-	}
-
-	problemBriefs := make([]dto.ExamProblemBrief, 0, len(problems))
-	for _, p := range problems {
-		problemBriefs = append(problemBriefs, dto.ExamProblemBrief{
-			ExamProblemID: p.ID,
-			ProblemID:     p.ProblemID,
-			Title:         p.Title,
-			Difficulty:    p.Difficulty,
-			Points:        p.Points,
-			SortOrder:     p.SortOrder,
-		})
-	}
-
-	timeRemaining := int64(0)
-	if participant.StartedAt.Valid {
-		timeRemaining = calculateTimeRemaining(participant.StartedAt.Time, exam.EndTime.Time)
-	}
-
-	description := ""
-	if exam.Description != nil {
-		description = *exam.Description
-	}
-
-	examStatus := "draft"
-	if exam.Status != nil {
-		examStatus = *exam.Status
-	}
-
-	participantStatus := "registered"
-	if participant.Status != nil {
-		participantStatus = *participant.Status
-	}
-
-	return &dto.GetExamResponse{
-		ExamID:            examID,
-		Title:             exam.Title,
-		Description:       description,
-		StartTime:         exam.StartTime.Time.Format(time.RFC3339),
-		EndTime:           exam.EndTime.Time.Format(time.RFC3339),
-		DurationMins:      exam.DurationMinutes,
-		Status:            examStatus,
-		TimeRemainingMs:   timeRemaining,
-		ParticipantStatus: participantStatus,
-		Problems:          problemBriefs,
-	}, nil
+	// NOTE: GetExamProblemsForStudent query not yet implemented
+	return nil, fmt.Errorf("exam problem loading not yet implemented")
 }
 
 func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProblemID, userID int64) (*dto.GetProblemResponse, error) {
-	_, err := su.queries.GetParticipantStatus(ctx, models.GetParticipantStatusParams{
-		ExamID: examID,
-		UserID: userID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("not registered for this exam: %w", err)
-	}
-
-	problem, err := su.queries.GetExamProblemDetails(ctx, models.GetExamProblemDetailsParams{
-		ExamID: examID,
-		ID:     examProblemID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("problem not found: %w", err)
-	}
-
-	submissions, err := su.queries.GetStudentSubmissionsForProblem(ctx, models.GetStudentSubmissionsForProblemParams{
-		ExamID:        examID,
-		ExamProblemID: examProblemID,
-		UserID:        userID,
-	})
-
-	var studentSubs []dto.StudentSubmission
-	attemptNumber := int32(1)
-	if err == nil {
-		attemptNumber = int32(len(submissions)) + 1
-		for _, sub := range submissions {
-			score := 0.0
-			if sub.Score.Valid && sub.Score.Int != nil {
-				if i64, err := sub.Score.Int64Value(); err == nil {
-					score = float64(i64.Int64)
-				}
-			}
-
-			isCorrect := false
-			if sub.IsCorrect != nil {
-				isCorrect = *sub.IsCorrect
-			}
-
-			attemptNum := int32(1)
-			if sub.AttemptNumber != nil {
-				attemptNum = *sub.AttemptNumber
-			}
-
-			studentSubs = append(studentSubs, dto.StudentSubmission{
-				SubmissionID:    sub.ID,
-				Code:            sub.Code,
-				Status:          sub.Status,
-				Score:           score,
-				IsCorrect:       isCorrect,
-				AttemptNumber:   attemptNum,
-				ExecutionTimeMs: sub.ExecutionTimeMs,
-				ErrorMessage:    sub.ErrorMessage,
-				SubmittedAt:     sub.SubmittedAt.Time.Format(time.RFC3339),
-			})
-		}
-	}
-
-	return &dto.GetProblemResponse{
-		ExamProblemID:   problem.ID,
-		ProblemID:       problem.ProblemID,
-		Title:           problem.Title,
-		Description:     problem.Description,
-		Difficulty:      problem.Difficulty,
-		Points:          problem.Points,
-		SortOrder:       problem.SortOrder,
-		ScoringMode:     problem.ScoringMode,
-		ReferenceAnswer: problem.ReferenceAnswer,
-		InitScript:      &problem.InitScript,
-		SolutionQuery:   &problem.SolutionQuery,
-		AttemptNumber:   attemptNumber,
-		Submissions:     studentSubs,
-	}, nil
+	// NOTE: GetExamProblemDetails query not yet implemented
+	return nil, fmt.Errorf("exam problem loading not yet implemented")
 }
 
 func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProblemID, userID int64, req *dto.SubmitCodeRequest) (*dto.SubmitCodeResponse, error) {
-	if req == nil || req.Code == "" {
-		return nil, fmt.Errorf("code cannot be empty")
-	}
-
-	participant, err := su.queries.GetParticipantStatus(ctx, models.GetParticipantStatusParams{
-		ExamID: examID,
-		UserID: userID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("not registered for this exam: %w", err)
-	}
-
-	participantStatus := "registered"
-	if participant.Status != nil {
-		participantStatus = *participant.Status
-	}
-
-	if participantStatus != "in_progress" {
-		return nil, fmt.Errorf("exam not in progress")
-	}
-
-	submission, err := su.queries.CreateExamSubmissionForStudent(ctx, models.CreateExamSubmissionForStudentParams{
-		ExamID:        examID,
-		ExamProblemID: examProblemID,
-		UserID:        userID,
-		Code:          req.Code,
-		DatabaseType:  req.DatabaseType,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create submission: %w", err)
-	}
-
-	problem, err := su.queries.GetExamProblemDetails(ctx, models.GetExamProblemDetailsParams{
-		ExamID: examID,
-		ID:     examProblemID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("problem not found: %w", err)
-	}
-
-	scoringMode := "manual"
-	if problem.ScoringMode != nil {
-		scoringMode = *problem.ScoringMode
-	}
-
-	executionResult, err := su.executor.ExecuteCode(ctx, req.Code, problem.InitScript, problem.SolutionQuery, req.DatabaseType, 5*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("execution error: %w", err)
-	}
-
-	score := 0.0
-	submissionStatus := "completed"
-	errorMsg := ""
-
-	if !executionResult.Success {
-		submissionStatus = "error"
-		errorMsg = executionResult.ErrorMessage
-		score = 0.0
-	} else if scoringMode == "auto" || scoringMode == "answer_key" {
-		if executionResult.IsCorrect {
-			score = 100.0
-		} else {
-			score = 0.0
-		}
-		submissionStatus = "graded"
-	} else {
-		score = 0.0
-		submissionStatus = "pending_review"
-	}
-
-	su.db.GetPool().Exec(ctx,
-		`UPDATE exam_submissions SET score = $1, is_correct = $2, status = $3, error_message = $4, execution_time_ms = $5
-		 WHERE id = $6`,
-		score, executionResult.IsCorrect, submissionStatus, errorMsg, executionResult.ExecutionTime, submission.ID)
-
-	// Cache submission result in Redis (24 hour TTL)
-	cacheKey := fmt.Sprintf("submission:%d:exam:%d:problem:%d", submission.ID, examID, examProblemID)
-	if su.cache != nil {
-		cacheData := map[string]interface{}{
-			"submission_id": submission.ID,
-			"exam_id":       examID,
-			"problem_id":    examProblemID,
-			"user_id":       userID,
-			"score":         score,
-			"is_correct":    executionResult.IsCorrect,
-			"status":        submissionStatus,
-			"error_message": errorMsg,
-		}
-		su.cache.SetWithExpiration(cacheKey, cacheData, 24*time.Hour)
-	}
-
-	attemptNum := int32(1)
-	if submission.AttemptNumber != nil {
-		attemptNum = *submission.AttemptNumber
-	}
-
-	return &dto.SubmitCodeResponse{
-		SubmissionID:    submission.ID,
-		ExamID:          examID,
-		ExamProblemID:   examProblemID,
-		Status:          submissionStatus,
-		Score:           score,
-		IsCorrect:       executionResult.IsCorrect,
-		AttemptNumber:   attemptNum,
-		ExecutionTimeMs: &executionResult.ExecutionTime,
-		ErrorMessage:    &errorMsg,
-		SubmittedAt:     submission.SubmittedAt.Time.Format(time.RFC3339),
-		ScoringMode:     scoringMode,
-	}, nil
+	// NOTE: GetExamProblemDetails query not yet implemented
+	return nil, fmt.Errorf("exam submission functionality not yet implemented")
 }
 
 func (su *studentExamUseCase) SubmitExam(ctx context.Context, examID, userID int64) (*dto.SubmitExamResponse, error) {

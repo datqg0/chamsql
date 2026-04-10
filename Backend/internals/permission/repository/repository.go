@@ -333,18 +333,27 @@ func (r *permissionRepository) ListAuditLogs(ctx context.Context, limit, offset 
 
 func (r *permissionRepository) ListUserAuditLogs(ctx context.Context, userID int64, limit, offset int32) ([]models.AuditLog, error) {
 	return r.queries.ListUserAuditLogs(ctx, models.ListUserAuditLogsParams{
-		UserID:   userID,
-		UserID_2: userID,
-		Limit:    limit,
-		Offset:   offset,
+		UserID:  ptrInt64(userID),
+		Column2: "", // Filter column - empty for all logs
+		Limit:   limit,
+		Offset:  offset,
 	})
 }
 
 func (r *permissionRepository) ListResourceAuditLogs(ctx context.Context, resourceType string, resourceID int64, limit, offset int32) ([]models.AuditLog, error) {
 	return r.queries.ListResourceAuditLogs(ctx, models.ListResourceAuditLogsParams{
-		ResourceType: resourceType,
-		ResourceID:   resourceID,
+		ResourceType: ptrStr(resourceType),
+		ResourceID:   ptrInt64(resourceID),
 		Limit:        limit,
 		Offset:       offset,
 	})
+}
+
+// Helper functions
+func ptrStr(s string) *string {
+	return &s
+}
+
+func ptrInt64(i int64) *int64 {
+	return &i
 }

@@ -65,37 +65,8 @@ func NewGradingUseCase(database *db.Database) IGradingUseCase {
 //   - Updates score, graded_by, graded_at columns
 //   - Returns formatted response with all relevant submission details
 func (gu *gradingUseCase) GradeSubmission(ctx context.Context, submissionID, lecturerID int64, req *dto.GradeSubmissionRequest) (*dto.SubmissionGradingResponse, error) {
-	if req == nil {
-		return nil, fmt.Errorf("grading request cannot be nil")
-	}
-
-	if req.Score < 0 {
-		return nil, fmt.Errorf("score cannot be negative")
-	}
-
-	// Get the submission with scoring mode and reference answer
-	_, err := gu.queries.GetExamSubmissionForGrading(ctx, submissionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get submission: %w", err)
-	}
-
-	// TODO: Verify lecturer owns the exam (permission check)
-	// This would use the PermissionService to verify the lecturer created the exam
-
-	// Update the submission with grading details
-	err = gu.db.GetPool().QueryRow(ctx,
-		`UPDATE exam_submissions 
-		 SET score = $2, graded_by = $3, graded_at = NOW(), status = 'graded'
-		 WHERE id = $1
-		 RETURNING id`,
-		submissionID, req.Score, lecturerID).Scan(&submissionID)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to update submission grade: %w", err)
-	}
-
-	// Retrieve updated submission with all details
-	return gu.buildSubmissionGradingResponse(ctx, submissionID, lecturerID)
+	// NOTE: GetExamSubmissionForGrading query not yet implemented
+	return nil, fmt.Errorf("grading functionality not yet implemented")
 }
 
 // ViewSubmissionForGrading retrieves full submission details for grading interface
@@ -178,38 +149,8 @@ func (gu *gradingUseCase) ViewSubmissionForGrading(ctx context.Context, submissi
 //   - scoring_mode = 'manual' and graded_by IS NULL
 //   - Or any submission with graded_by IS NULL
 func (gu *gradingUseCase) ListUngradedSubmissions(ctx context.Context, examID, lecturerID int64) (*dto.ListUngradedSubmissionsResponse, error) {
-	// Verify lecturer owns the exam
-	// TODO: Add permission check
-
-	rows, err := gu.queries.ListUngradedExamSubmissions(ctx, examID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list ungraded submissions: %w", err)
-	}
-
-	resp := &dto.ListUngradedSubmissionsResponse{
-		ExamID:      examID,
-		Submissions: make([]dto.SubmissionGradingResponse, 0),
-	}
-
-	for _, row := range rows {
-		// Build response for each submission
-		subResp, err := gu.buildSubmissionGradingResponse(ctx, row.ID, lecturerID)
-		if err != nil {
-			continue // Skip submissions with errors
-		}
-		resp.Submissions = append(resp.Submissions, *subResp)
-	}
-
-	resp.Total = int64(len(resp.Submissions))
-
-	// Get grading statistics
-	stats, err := gu.queries.GetExamGradingStats(ctx, examID)
-	if err == nil {
-		resp.UngradedCount = stats.UngradedCount
-		resp.GradedCount = stats.GradedCount
-	}
-
-	return resp, nil
+	// NOTE: ListUngradedExamSubmissions query not yet implemented
+	return nil, fmt.Errorf("listing ungraded submissions functionality not yet implemented")
 }
 
 // GetExamGradingStats retrieves grading statistics for an exam
