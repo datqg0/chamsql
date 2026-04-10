@@ -61,7 +61,7 @@ INSERT INTO problems (
     hints, sample_output, is_public
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at
+RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, ai_generated, ai_provider, ai_confidence_score
 `
 
 type CreateProblemParams struct {
@@ -115,6 +115,9 @@ func (q *Queries) CreateProblem(ctx context.Context, arg CreateProblemParams) (P
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AiGenerated,
+		&i.AiProvider,
+		&i.AiConfidenceScore,
 	)
 	return i, err
 }
@@ -129,7 +132,7 @@ func (q *Queries) DeleteProblem(ctx context.Context, id int64) error {
 }
 
 const getProblemByID = `-- name: GetProblemByID :one
-SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at FROM problems WHERE id = $1
+SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, ai_generated, ai_provider, ai_confidence_score FROM problems WHERE id = $1
 `
 
 func (q *Queries) GetProblemByID(ctx context.Context, id int64) (Problem, error) {
@@ -153,12 +156,15 @@ func (q *Queries) GetProblemByID(ctx context.Context, id int64) (Problem, error)
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AiGenerated,
+		&i.AiProvider,
+		&i.AiConfidenceScore,
 	)
 	return i, err
 }
 
 const getProblemBySlug = `-- name: GetProblemBySlug :one
-SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at FROM problems WHERE slug = $1 AND is_active = TRUE
+SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, ai_generated, ai_provider, ai_confidence_score FROM problems WHERE slug = $1 AND is_active = TRUE
 `
 
 func (q *Queries) GetProblemBySlug(ctx context.Context, slug string) (Problem, error) {
@@ -182,13 +188,16 @@ func (q *Queries) GetProblemBySlug(ctx context.Context, slug string) (Problem, e
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AiGenerated,
+		&i.AiProvider,
+		&i.AiConfidenceScore,
 	)
 	return i, err
 }
 
 const getProblemWithUserProgress = `-- name: GetProblemWithUserProgress :one
 SELECT 
-    p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at,
+    p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.ai_generated, p.ai_provider, p.ai_confidence_score,
     t.name as topic_name,
     t.slug as topic_slug,
     up.is_solved,
@@ -223,6 +232,9 @@ type GetProblemWithUserProgressRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	AiGenerated        *bool              `json:"aiGenerated"`
+	AiProvider         *string            `json:"aiProvider"`
+	AiConfidenceScore  pgtype.Numeric     `json:"aiConfidenceScore"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 	IsSolved           *bool              `json:"isSolved"`
@@ -251,6 +263,9 @@ func (q *Queries) GetProblemWithUserProgress(ctx context.Context, arg GetProblem
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AiGenerated,
+		&i.AiProvider,
+		&i.AiConfidenceScore,
 		&i.TopicName,
 		&i.TopicSlug,
 		&i.IsSolved,
@@ -261,7 +276,7 @@ func (q *Queries) GetProblemWithUserProgress(ctx context.Context, arg GetProblem
 }
 
 const listProblems = `-- name: ListProblems :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.ai_generated, p.ai_provider, p.ai_confidence_score, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.is_public = TRUE AND p.is_active = TRUE
@@ -292,6 +307,9 @@ type ListProblemsRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	AiGenerated        *bool              `json:"aiGenerated"`
+	AiProvider         *string            `json:"aiProvider"`
+	AiConfidenceScore  pgtype.Numeric     `json:"aiConfidenceScore"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -323,6 +341,9 @@ func (q *Queries) ListProblems(ctx context.Context, arg ListProblemsParams) ([]L
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AiGenerated,
+			&i.AiProvider,
+			&i.AiConfidenceScore,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -337,7 +358,7 @@ func (q *Queries) ListProblems(ctx context.Context, arg ListProblemsParams) ([]L
 }
 
 const listProblemsByDifficulty = `-- name: ListProblemsByDifficulty :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.ai_generated, p.ai_provider, p.ai_confidence_score, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.difficulty = $1 AND p.is_public = TRUE AND p.is_active = TRUE
@@ -369,6 +390,9 @@ type ListProblemsByDifficultyRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	AiGenerated        *bool              `json:"aiGenerated"`
+	AiProvider         *string            `json:"aiProvider"`
+	AiConfidenceScore  pgtype.Numeric     `json:"aiConfidenceScore"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -400,6 +424,9 @@ func (q *Queries) ListProblemsByDifficulty(ctx context.Context, arg ListProblems
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AiGenerated,
+			&i.AiProvider,
+			&i.AiConfidenceScore,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -414,7 +441,7 @@ func (q *Queries) ListProblemsByDifficulty(ctx context.Context, arg ListProblems
 }
 
 const listProblemsByTopic = `-- name: ListProblemsByTopic :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.ai_generated, p.ai_provider, p.ai_confidence_score, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.topic_id = $1 AND p.is_public = TRUE AND p.is_active = TRUE
@@ -446,6 +473,9 @@ type ListProblemsByTopicRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	AiGenerated        *bool              `json:"aiGenerated"`
+	AiProvider         *string            `json:"aiProvider"`
+	AiConfidenceScore  pgtype.Numeric     `json:"aiConfidenceScore"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -477,6 +507,9 @@ func (q *Queries) ListProblemsByTopic(ctx context.Context, arg ListProblemsByTop
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AiGenerated,
+			&i.AiProvider,
+			&i.AiConfidenceScore,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -504,7 +537,7 @@ UPDATE problems SET
     is_public = COALESCE($11, is_public),
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at
+RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, ai_generated, ai_provider, ai_confidence_score
 `
 
 type UpdateProblemParams struct {
@@ -554,6 +587,9 @@ func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (P
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AiGenerated,
+		&i.AiProvider,
+		&i.AiConfidenceScore,
 	)
 	return i, err
 }

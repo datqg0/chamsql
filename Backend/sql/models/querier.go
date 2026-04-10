@@ -40,6 +40,8 @@ type Querier interface {
 	CountUserSubmissions(ctx context.Context, userID int64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CountUsersByRole(ctx context.Context, role string) (int64, error)
+	// AI Generated Content Queries
+	CreateAIGeneratedContent(ctx context.Context, arg CreateAIGeneratedContentParams) (AiGeneratedContent, error)
 	// =============================================
 	// AUDIT LOG QUERIES
 	// =============================================
@@ -57,8 +59,14 @@ type Querier interface {
 	// =============================================
 	CreateExamSubmission(ctx context.Context, arg CreateExamSubmissionParams) (ExamSubmission, error)
 	CreateExamSubmissionForStudent(ctx context.Context, arg CreateExamSubmissionForStudentParams) (CreateExamSubmissionForStudentRow, error)
+	// Excel Export Queries
+	CreateExcelExport(ctx context.Context, arg CreateExcelExportParams) (ExcelExport, error)
+	// PDF Upload Queries
+	CreatePDFUpload(ctx context.Context, arg CreatePDFUploadParams) (PdfUpload, error)
 	CreatePermission(ctx context.Context, arg CreatePermissionParams) (Permission, error)
 	CreateProblem(ctx context.Context, arg CreateProblemParams) (Problem, error)
+	// Problem Review Queue Queries
+	CreateProblemReviewQueue(ctx context.Context, arg CreateProblemReviewQueueParams) (ProblemReviewQueue, error)
 	CreateProblemTestCase(ctx context.Context, arg CreateProblemTestCaseParams) (ProblemTestCase, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	// =============================================
@@ -68,6 +76,8 @@ type Querier interface {
 	CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (Submission, error)
 	CreateSubmissionTestResult(ctx context.Context, arg CreateSubmissionTestResultParams) (SubmissionTestResult, error)
+	// Test Case Templates Queries
+	CreateTestCaseTemplate(ctx context.Context, arg CreateTestCaseTemplateParams) (TestCaseTemplate, error)
 	CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeactivateClass(ctx context.Context, id int64) error
@@ -82,6 +92,8 @@ type Querier interface {
 	DeleteTopic(ctx context.Context, id int32) error
 	EmailExists(ctx context.Context, email string) (bool, error)
 	FetchPendingEvents(ctx context.Context, limit int32) ([]FetchPendingEventsRow, error)
+	GetAIGeneratedContentByProblem(ctx context.Context, arg GetAIGeneratedContentByProblemParams) ([]AiGeneratedContent, error)
+	GetAIGeneratedContentByType(ctx context.Context, arg GetAIGeneratedContentByTypeParams) ([]AiGeneratedContent, error)
 	GetAuditLog(ctx context.Context, arg GetAuditLogParams) ([]PermissionAuditLog, error)
 	GetClassByCode(ctx context.Context, code string) (Class, error)
 	GetClassByID(ctx context.Context, id int64) (Class, error)
@@ -101,7 +113,11 @@ type Querier interface {
 	// GRADING QUERIES
 	// =============================================
 	GetExamSubmissionForGrading(ctx context.Context, id int64) (GetExamSubmissionForGradingRow, error)
+	GetExcelExportsByExam(ctx context.Context, examID *int64) ([]ExcelExport, error)
+	GetLatestExcelExport(ctx context.Context, arg GetLatestExcelExportParams) (ExcelExport, error)
 	GetLatestSubmission(ctx context.Context, arg GetLatestSubmissionParams) (Submission, error)
+	GetPDFUploadByID(ctx context.Context, id int64) (PdfUpload, error)
+	GetPDFUploadsByLecturer(ctx context.Context, arg GetPDFUploadsByLecturerParams) ([]PdfUpload, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
 	GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (ExamParticipant, error)
 	// =============================================
@@ -110,8 +126,12 @@ type Querier interface {
 	GetPermissionByID(ctx context.Context, id int32) (Permission, error)
 	GetProblemByID(ctx context.Context, id int64) (Problem, error)
 	GetProblemBySlug(ctx context.Context, slug string) (Problem, error)
+	GetProblemReviewQueueByID(ctx context.Context, id int64) (ProblemReviewQueue, error)
+	GetProblemReviewQueueByPDF(ctx context.Context, pdfUploadID *int64) ([]ProblemReviewQueue, error)
+	GetProblemReviewQueueByStatus(ctx context.Context, arg GetProblemReviewQueueByStatusParams) ([]ProblemReviewQueue, error)
 	GetProblemTestCaseByID(ctx context.Context, id int64) (ProblemTestCase, error)
 	GetProblemWithUserProgress(ctx context.Context, arg GetProblemWithUserProgressParams) (GetProblemWithUserProgressRow, error)
+	GetPublicTestCaseTemplates(ctx context.Context, problemID *int64) ([]TestCaseTemplate, error)
 	GetRefreshToken(ctx context.Context, token string) (RefreshToken, error)
 	GetResourceAccess(ctx context.Context, arg GetResourceAccessParams) ([]ResourceAccessControl, error)
 	// =============================================
@@ -126,6 +146,7 @@ type Querier interface {
 	GetStudentClasses(ctx context.Context, userID int64) ([]Class, error)
 	GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]GetStudentSubmissionsForProblemRow, error)
 	GetSubmissionByID(ctx context.Context, id int64) (GetSubmissionByIDRow, error)
+	GetTestCaseTemplatesByProblem(ctx context.Context, problemID *int64) ([]TestCaseTemplate, error)
 	GetTopicByID(ctx context.Context, id int32) (Topic, error)
 	GetTopicBySlug(ctx context.Context, slug string) (Topic, error)
 	GetUserAuditLog(ctx context.Context, arg GetUserAuditLogParams) ([]PermissionAuditLog, error)
@@ -198,17 +219,24 @@ type Querier interface {
 	StartExamParticipant(ctx context.Context, arg StartExamParticipantParams) (ExamParticipant, error)
 	SubmitExam(ctx context.Context, arg SubmitExamParams) (ExamParticipant, error)
 	SubmitExamParticipant(ctx context.Context, arg SubmitExamParticipantParams) (ExamParticipant, error)
+	UpdateAIGeneratedContentApproval(ctx context.Context, arg UpdateAIGeneratedContentApprovalParams) (AiGeneratedContent, error)
 	UpdateClass(ctx context.Context, arg UpdateClassParams) (Class, error)
 	UpdateExam(ctx context.Context, arg UpdateExamParams) (Exam, error)
 	UpdateExamProblemPoints(ctx context.Context, arg UpdateExamProblemPointsParams) (ExamProblem, error)
 	UpdateExamStatus(ctx context.Context, arg UpdateExamStatusParams) (Exam, error)
 	UpdateExamSubmissionGrade(ctx context.Context, arg UpdateExamSubmissionGradeParams) (ExamSubmission, error)
 	UpdateExamSubmissionWithResult(ctx context.Context, arg UpdateExamSubmissionWithResultParams) (UpdateExamSubmissionWithResultRow, error)
+	UpdatePDFUploadError(ctx context.Context, arg UpdatePDFUploadErrorParams) (PdfUpload, error)
+	UpdatePDFUploadStatus(ctx context.Context, arg UpdatePDFUploadStatusParams) (PdfUpload, error)
+	UpdatePDFUploadWithExtraction(ctx context.Context, arg UpdatePDFUploadWithExtractionParams) (PdfUpload, error)
 	UpdateParticipantScore(ctx context.Context, arg UpdateParticipantScoreParams) (ExamParticipant, error)
 	UpdateProblem(ctx context.Context, arg UpdateProblemParams) (Problem, error)
+	UpdateProblemReviewDraft(ctx context.Context, arg UpdateProblemReviewDraftParams) (ProblemReviewQueue, error)
+	UpdateProblemReviewStatus(ctx context.Context, arg UpdateProblemReviewStatusParams) (ProblemReviewQueue, error)
 	UpdateProblemTestCase(ctx context.Context, arg UpdateProblemTestCaseParams) (ProblemTestCase, error)
 	UpdateRole(ctx context.Context, arg UpdateRoleParams) (Role, error)
 	UpdateSubmissionScore(ctx context.Context, arg UpdateSubmissionScoreParams) error
+	UpdateTestCaseValidation(ctx context.Context, arg UpdateTestCaseValidationParams) (TestCaseTemplate, error)
 	UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (User, error)

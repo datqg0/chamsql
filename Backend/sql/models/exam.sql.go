@@ -173,7 +173,7 @@ INSERT INTO exam_submissions (
     is_correct, score, attempt_number
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at, test_case_results
 `
 
 type CreateExamSubmissionParams struct {
@@ -230,6 +230,7 @@ func (q *Queries) CreateExamSubmission(ctx context.Context, arg CreateExamSubmis
 		&i.SubmittedAt,
 		&i.GradedBy,
 		&i.GradedAt,
+		&i.TestCaseResults,
 	)
 	return i, err
 }
@@ -588,7 +589,7 @@ func (q *Queries) GetExamResults(ctx context.Context, examID int64) ([]GetExamRe
 }
 
 const getExamSubmission = `-- name: GetExamSubmission :one
-SELECT id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at FROM exam_submissions
+SELECT id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at, test_case_results FROM exam_submissions
 WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
 ORDER BY submitted_at DESC
 LIMIT 1
@@ -621,13 +622,14 @@ func (q *Queries) GetExamSubmission(ctx context.Context, arg GetExamSubmissionPa
 		&i.SubmittedAt,
 		&i.GradedBy,
 		&i.GradedAt,
+		&i.TestCaseResults,
 	)
 	return i, err
 }
 
 const getExamSubmissionForGrading = `-- name: GetExamSubmissionForGrading :one
 
-SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, ep.scoring_mode, ep.reference_answer, ep.points as max_points
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, es.test_case_results, ep.scoring_mode, ep.reference_answer, ep.points as max_points
 FROM exam_submissions es
 JOIN exam_problems ep ON ep.id = es.exam_problem_id
 WHERE es.id = $1
@@ -651,6 +653,7 @@ type GetExamSubmissionForGradingRow struct {
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
 	GradedBy        *int64             `json:"gradedBy"`
 	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
+	TestCaseResults []byte             `json:"testCaseResults"`
 	ScoringMode     *string            `json:"scoringMode"`
 	ReferenceAnswer *string            `json:"referenceAnswer"`
 	MaxPoints       *int32             `json:"maxPoints"`
@@ -680,6 +683,7 @@ func (q *Queries) GetExamSubmissionForGrading(ctx context.Context, id int64) (Ge
 		&i.SubmittedAt,
 		&i.GradedBy,
 		&i.GradedAt,
+		&i.TestCaseResults,
 		&i.ScoringMode,
 		&i.ReferenceAnswer,
 		&i.MaxPoints,
@@ -1165,7 +1169,7 @@ func (q *Queries) ListPublicExams(ctx context.Context, arg ListPublicExamsParams
 }
 
 const listUngradedExamSubmissions = `-- name: ListUngradedExamSubmissions :many
-SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, ep.scoring_mode, ep.reference_answer, ep.points as max_points,
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, es.test_case_results, ep.scoring_mode, ep.reference_answer, ep.points as max_points,
     p.title as problem_title, u.full_name as student_name
 FROM exam_submissions es
 JOIN exam_problems ep ON ep.id = es.exam_problem_id
@@ -1193,6 +1197,7 @@ type ListUngradedExamSubmissionsRow struct {
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
 	GradedBy        *int64             `json:"gradedBy"`
 	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
+	TestCaseResults []byte             `json:"testCaseResults"`
 	ScoringMode     *string            `json:"scoringMode"`
 	ReferenceAnswer *string            `json:"referenceAnswer"`
 	MaxPoints       *int32             `json:"maxPoints"`
@@ -1227,6 +1232,7 @@ func (q *Queries) ListUngradedExamSubmissions(ctx context.Context, examID int64)
 			&i.SubmittedAt,
 			&i.GradedBy,
 			&i.GradedAt,
+			&i.TestCaseResults,
 			&i.ScoringMode,
 			&i.ReferenceAnswer,
 			&i.MaxPoints,
@@ -1244,7 +1250,7 @@ func (q *Queries) ListUngradedExamSubmissions(ctx context.Context, examID int64)
 }
 
 const listUserExamSubmissions = `-- name: ListUserExamSubmissions :many
-SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, ep.points as max_points, p.title as problem_title
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.graded_by, es.graded_at, es.test_case_results, ep.points as max_points, p.title as problem_title
 FROM exam_submissions es
 JOIN exam_problems ep ON ep.id = es.exam_problem_id
 JOIN problems p ON p.id = ep.problem_id
@@ -1275,6 +1281,7 @@ type ListUserExamSubmissionsRow struct {
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
 	GradedBy        *int64             `json:"gradedBy"`
 	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
+	TestCaseResults []byte             `json:"testCaseResults"`
 	MaxPoints       *int32             `json:"maxPoints"`
 	ProblemTitle    string             `json:"problemTitle"`
 }
@@ -1306,6 +1313,7 @@ func (q *Queries) ListUserExamSubmissions(ctx context.Context, arg ListUserExamS
 			&i.SubmittedAt,
 			&i.GradedBy,
 			&i.GradedAt,
+			&i.TestCaseResults,
 			&i.MaxPoints,
 			&i.ProblemTitle,
 		); err != nil {
@@ -1669,7 +1677,7 @@ UPDATE exam_submissions SET
     graded_at = NOW(),
     status = 'graded'
 WHERE id = $1
-RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, graded_by, graded_at, test_case_results
 `
 
 type UpdateExamSubmissionGradeParams struct {
@@ -1699,6 +1707,7 @@ func (q *Queries) UpdateExamSubmissionGrade(ctx context.Context, arg UpdateExamS
 		&i.SubmittedAt,
 		&i.GradedBy,
 		&i.GradedAt,
+		&i.TestCaseResults,
 	)
 	return i, err
 }
