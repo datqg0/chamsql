@@ -7,11 +7,17 @@ import (
 
 	"backend/configs"
 	"backend/db"
+	aiUsecase "backend/internals/ai/usecase"
+	pdfHttp "backend/internals/pdf/controller/http"
+	pdfRepository "backend/internals/pdf/repository"
+	pdfUsecase "backend/internals/pdf/usecase"
 	httpServer "backend/internals/server/http"
+	"backend/pkgs/ai"
 	"backend/pkgs/jwt"
 	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
 	kafka_config "backend/pkgs/messaging/kafka"
+	"backend/pkgs/pdf"
 	"backend/pkgs/permissions"
 	"backend/pkgs/redis"
 	"backend/pkgs/runner"
@@ -39,6 +45,18 @@ func NewContainer() (*Container, error) {
 		provideJWTProvider,
 		provideRunner,
 		providePermissionService,
+
+		// PDF & AI Services (Phase 4)
+		providePDFParser,
+		providePatternMatcher,
+		provideHuggingFaceClient,
+		provideAISolutionGenerator,
+		provideAITestCaseGenerator,
+		provideAITestCaseValidator,
+		provideAIOrchestrator,
+		providePDFRepository,
+		providePDFUploadManager,
+		providePDFHandler,
 
 		// Server
 		httpServer.NewServer,
@@ -120,6 +138,73 @@ func provideKafka(cfg *configs.Config) kafka.IKafka {
 
 func providePermissionService(database *db.Database) permissions.PermissionService {
 	return permissions.NewPermissionService(database)
+}
+
+// ===== PHASE 4: PDF & AI Services =====
+
+func providePDFParser() *pdf.PDFParser {
+	return pdf.NewPDFParser()
+}
+
+func providePatternMatcher() *ai.PatternMatcher {
+	return ai.NewPatternMatcher()
+}
+
+func provideHuggingFaceClient(cfg *configs.Config) *ai.HuggingFaceClient {
+	return ai.NewHuggingFaceClient(ai.HuggingFaceConfig{
+		APIKey:  cfg.HuggingFaceAPIKey,
+		Timeout: 30, // 30 seconds
+	})
+}
+
+func provideAISolutionGenerator(
+	patternMatcher *ai.PatternMatcher,
+	huggingfaceClient *ai.HuggingFaceClient,
+) aiUsecase.IAISolutionGenerator {
+	return aiUsecase.NewAISolutionGenerator(patternMatcher, huggingfaceClient)
+}
+
+func provideAITestCaseGenerator(database *db.Database) aiUsecase.IAITestCaseGenerator {
+	return aiUsecase.NewAITestCaseGenerator(database)
+}
+
+func provideAITestCaseValidator(database *db.Database) aiUsecase.IAITestCaseValidator {
+	return aiUsecase.NewAITestCaseValidator(database)
+}
+
+func provideAIOrchestrator(
+	solutionGenerator aiUsecase.IAISolutionGenerator,
+	testCaseGenerator aiUsecase.IAITestCaseGenerator,
+	testCaseValidator aiUsecase.IAITestCaseValidator,
+	database *db.Database,
+) aiUsecase.IAIOrchestrator {
+	return aiUsecase.NewAIOrchestrator(solutionGenerator, testCaseGenerator, testCaseValidator, database)
+}
+
+func providePDFRepository(database *db.Database) pdfRepository.IPDFRepository {
+	return pdfRepository.NewPDFRepository(database)
+}
+
+func providePDFUploadManager(
+	pdfRepo pdfRepository.IPDFRepository,
+	pdfParser *pdf.PDFParser,
+	solutionGenerator aiUsecase.IAISolutionGenerator,
+	testCaseGenerator aiUsecase.IAITestCaseGenerator,
+	testCaseValidator aiUsecase.IAITestCaseValidator,
+	aiOrchestrator aiUsecase.IAIOrchestrator,
+) pdfUsecase.IUploadManager {
+	return pdfUsecase.NewUploadManager(
+		pdfRepo,
+		pdfParser,
+		solutionGenerator,
+		testCaseGenerator,
+		testCaseValidator,
+		aiOrchestrator,
+	)
+}
+
+func providePDFHandler(uploadManager pdfUsecase.IUploadManager) *pdfHttp.PDFHandler {
+	return pdfHttp.NewPDFHandler(uploadManager)
 }
 
 // Invoke runs a function with dependencies injected

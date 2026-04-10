@@ -55,6 +55,9 @@ type Config struct {
 	AuthSecret           string        `mapstructure:"AUTH_SECRET"`
 	AccessTokenDuration  time.Duration `mapstructure:"ACCESS_TOKEN_DURATION"`
 	RefreshTokenDuration time.Duration `mapstructure:"REFRESH_TOKEN_DURATION"`
+
+	// AI/ML Services (Phase 4)
+	HuggingFaceAPIKey string `mapstructure:"HUGGINGFACE_API_KEY"`
 }
 
 var cfg Config
@@ -95,6 +98,7 @@ func LoadConfig() *Config {
 		AuthSecret:           viper.GetString("AUTH_SECRET"),
 		AccessTokenDuration:  viper.GetDuration("ACCESS_TOKEN_DURATION"),
 		RefreshTokenDuration: viper.GetDuration("REFRESH_TOKEN_DURATION"),
+		HuggingFaceAPIKey:    viper.GetString("HUGGINGFACE_API_KEY"),
 	}
 
 	// Defaults

@@ -7,6 +7,7 @@ import (
 	authHttp "backend/internals/auth/controller/http"
 	examHttp "backend/internals/exam/controller/http"
 	lecturerHttp "backend/internals/lecturer/controller/http"
+	pdfHttp "backend/internals/pdf/controller/http"
 	problemHttp "backend/internals/problem/controller/http"
 	studentHttp "backend/internals/student/controller/http"
 	submissionHttp "backend/internals/submission/controller/http"
@@ -28,10 +29,11 @@ type Server struct {
 	cache       redis.IRedis
 	jwtProv     jwt.JWTProvider
 	queryRunner runner.Runner
+	pdfHandler  *pdfHttp.PDFHandler
 }
 
 // NewServer is injectable by DI container
-func NewServer(cfg *configs.Config, database *db.Database, cache redis.IRedis, jwtProv jwt.JWTProvider, queryRunner runner.Runner) *Server {
+func NewServer(cfg *configs.Config, database *db.Database, cache redis.IRedis, jwtProv jwt.JWTProvider, queryRunner runner.Runner, pdfHandler *pdfHttp.PDFHandler) *Server {
 	return &Server{
 		engine:      gin.Default(),
 		cfg:         cfg,
@@ -39,6 +41,7 @@ func NewServer(cfg *configs.Config, database *db.Database, cache redis.IRedis, j
 		cache:       cache,
 		jwtProv:     jwtProv,
 		queryRunner: queryRunner,
+		pdfHandler:  pdfHandler,
 	}
 }
 
@@ -101,4 +104,8 @@ func (s *Server) MapRoutes() {
 
 	// Admin routes (user import, stats)
 	adminHttp.Routes(v1, s.database, s.cache, authMiddleware)
+
+	// PDF Upload routes (Phase 4)
+	lecturerGroup := v1.Group("/lecturer")
+	pdfHttp.Routes(lecturerGroup, s.pdfHandler, authMiddleware)
 }
