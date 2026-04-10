@@ -127,6 +127,12 @@ func (h *ProblemHandler) Create(c *gin.Context) {
 // @Success     200 {object} dto.ProblemResponse
 // @Router      /problems/{id} [put]
 func (h *ProblemHandler) Update(c *gin.Context) {
+	userID, ok := middlewares.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid problem ID")
@@ -139,10 +145,14 @@ func (h *ProblemHandler) Update(c *gin.Context) {
 		return
 	}
 
-	result, err := h.usecase.Update(c.Request.Context(), id, &req)
+	result, err := h.usecase.Update(c.Request.Context(), userID, id, &req)
 	if err != nil {
 		if err == usecase.ErrProblemNotFound {
 			response.NotFound(c, "Problem not found")
+			return
+		}
+		if err == usecase.ErrForbidden {
+			response.Forbidden(c, "You don't have permission to modify this problem")
 			return
 		}
 		response.InternalServerError(c, err.Error())
@@ -159,16 +169,26 @@ func (h *ProblemHandler) Update(c *gin.Context) {
 // @Success     200 {object} response.Response
 // @Router      /problems/{id} [delete]
 func (h *ProblemHandler) Delete(c *gin.Context) {
+	userID, ok := middlewares.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid problem ID")
 		return
 	}
 
-	err = h.usecase.Delete(c.Request.Context(), id)
+	err = h.usecase.Delete(c.Request.Context(), userID, id)
 	if err != nil {
 		if err == usecase.ErrProblemNotFound {
 			response.NotFound(c, "Problem not found")
+			return
+		}
+		if err == usecase.ErrForbidden {
+			response.Forbidden(c, "You don't have permission to delete this problem")
 			return
 		}
 		response.InternalServerError(c, err.Error())

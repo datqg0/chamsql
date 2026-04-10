@@ -289,10 +289,24 @@ func (h *ExamHandler) AddParticipants(c *gin.Context) {
 // @Success     200 {array} dto.ParticipantResponse
 // @Router      /exams/{id}/participants [get]
 func (h *ExamHandler) ListParticipants(c *gin.Context) {
+	userID, ok := middlewares.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+
 	examID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 
-	result, err := h.usecase.ListParticipants(c.Request.Context(), examID)
+	result, err := h.usecase.ListParticipants(c.Request.Context(), userID, examID)
 	if err != nil {
+		if err == usecase.ErrUnauthorized {
+			response.Forbidden(c, "You don't have permission to view participants for this exam")
+			return
+		}
+		if err == usecase.ErrExamNotFound {
+			response.NotFound(c, "Exam not found")
+			return
+		}
 		response.InternalServerError(c, err.Error())
 		return
 	}

@@ -14,14 +14,15 @@ import (
 var (
 	ErrProblemNotFound = errors.New("problem not found")
 	ErrSlugExists      = errors.New("problem slug already exists")
+	ErrForbidden       = errors.New("you don't have permission to modify this problem")
 )
 
 type IProblemUseCase interface {
 	Create(ctx context.Context, userID int64, req *dto.CreateProblemRequest) (*dto.ProblemResponse, error)
 	GetBySlug(ctx context.Context, slug string, userID *int64) (*dto.ProblemResponse, error)
 	List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
-	Update(ctx context.Context, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
-	Delete(ctx context.Context, id int64) error
+	Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
+	Delete(ctx context.Context, userID int64, id int64) error
 }
 
 type problemUseCase struct {
@@ -225,11 +226,16 @@ func (u *problemUseCase) List(ctx context.Context, role string, query *dto.Probl
 	}, nil
 }
 
-func (u *problemUseCase) Update(ctx context.Context, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error) {
+func (u *problemUseCase) Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error) {
 	// Check if problem exists
-	_, err := u.repo.GetByID(ctx, id)
+	problem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, ErrProblemNotFound
+	}
+
+	// Check ownership
+	if problem.CreatedBy == nil || *problem.CreatedBy != userID {
+		return nil, ErrForbidden
 	}
 
 	params := models.UpdateProblemParams{ID: id}
@@ -264,17 +270,17 @@ func (u *problemUseCase) Update(ctx context.Context, id int64, req *dto.UpdatePr
 		params.IsPublic = req.IsPublic
 	}
 
-	problem, err := u.repo.Update(ctx, params)
+	updatedProblem, err := u.repo.Update(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update test cases if provided (replace all)
 	if req.TestCases != nil {
-		_ = u.repo.DeleteAllTestCases(ctx, problem.ID)
+		_ = u.repo.DeleteAllTestCases(ctx, updatedProblem.ID)
 		for _, tcReq := range req.TestCases {
 			_, _ = u.repo.CreateTestCase(ctx, models.CreateProblemTestCaseParams{
-				ProblemID:     problem.ID,
+				ProblemID:     updatedProblem.ID,
 				Name:          &tcReq.Name,
 				Description:   &tcReq.Description,
 				InitScript:    tcReq.InitScript,
@@ -286,26 +292,31 @@ func (u *problemUseCase) Update(ctx context.Context, id int64, req *dto.UpdatePr
 	}
 
 	// Fetch the full updated problem to ensure we have the slug and other fields
-	updatedProblem, err := u.repo.GetByID(ctx, id)
+	finalProblem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get final test cases
-	testCases, _ := u.repo.ListTestCases(ctx, updatedProblem.ID)
+	testCases, _ := u.repo.ListTestCases(ctx, finalProblem.ID)
 
 	// Invalidate cache with old slug
 	if u.cache != nil && problem.Slug != "" {
 		u.cache.Remove("problem:" + problem.Slug)
 	}
 
-	return toProblemResponse(updatedProblem, testCases), nil
+	return toProblemResponse(finalProblem, testCases), nil
 }
 
-func (u *problemUseCase) Delete(ctx context.Context, id int64) error {
+func (u *problemUseCase) Delete(ctx context.Context, userID int64, id int64) error {
 	problem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return ErrProblemNotFound
+	}
+
+	// Check ownership
+	if problem.CreatedBy == nil || *problem.CreatedBy != userID {
+		return ErrForbidden
 	}
 
 	// Invalidate cache before deletion

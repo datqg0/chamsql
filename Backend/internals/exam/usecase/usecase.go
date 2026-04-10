@@ -46,7 +46,7 @@ type IExamUseCase interface {
 	// Participant management
 	AddParticipants(ctx context.Context, userID int64, examID int64, req *dto.AddParticipantsRequest) error
 	RemoveParticipant(ctx context.Context, userID int64, examID, participantID int64) error
-	ListParticipants(ctx context.Context, examID int64) ([]dto.ParticipantResponse, error)
+	ListParticipants(ctx context.Context, userID int64, examID int64) ([]dto.ParticipantResponse, error)
 
 	// Student actions
 	StartExam(ctx context.Context, userID int64, examID int64) (*dto.StartExamResponse, error)
@@ -380,7 +380,17 @@ func (u *examUseCase) RemoveParticipant(ctx context.Context, userID int64, examI
 	return u.examRepo.RemoveParticipant(ctx, examID, participantID)
 }
 
-func (u *examUseCase) ListParticipants(ctx context.Context, examID int64) ([]dto.ParticipantResponse, error) {
+func (u *examUseCase) ListParticipants(ctx context.Context, userID int64, examID int64) ([]dto.ParticipantResponse, error) {
+	exam, err := u.examRepo.GetByID(ctx, examID)
+	if err != nil {
+		return nil, ErrExamNotFound
+	}
+
+	// Check ownership - only the exam creator can list participants
+	if exam.CreatedBy != userID {
+		return nil, ErrUnauthorized
+	}
+
 	participants, err := u.examRepo.ListParticipants(ctx, examID)
 	if err != nil {
 		return nil, err

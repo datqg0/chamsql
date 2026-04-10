@@ -5,6 +5,7 @@ import (
 
 	"backend/internals/topic/controller/dto"
 	"backend/internals/topic/usecase"
+	"backend/pkgs/middlewares"
 	"backend/pkgs/response"
 
 	"github.com/gin-gonic/gin"
@@ -63,6 +64,12 @@ func (h *TopicHandler) GetBySlug(c *gin.Context) {
 // @Success     201 {object} dto.TopicResponse
 // @Router      /topics [post]
 func (h *TopicHandler) Create(c *gin.Context) {
+	role, ok := middlewares.GetUserRole(c)
+	if !ok || role != "admin" {
+		response.Forbidden(c, "Only admins can create topics")
+		return
+	}
+
 	var req dto.CreateTopicRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
@@ -91,6 +98,12 @@ func (h *TopicHandler) Create(c *gin.Context) {
 // @Success     200 {object} dto.TopicResponse
 // @Router      /topics/{id} [put]
 func (h *TopicHandler) Update(c *gin.Context) {
+	role, ok := middlewares.GetUserRole(c)
+	if !ok || role != "admin" {
+		response.Forbidden(c, "Only admins can update topics")
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		response.BadRequest(c, "Invalid topic ID")
@@ -123,6 +136,12 @@ func (h *TopicHandler) Update(c *gin.Context) {
 // @Success     200 {object} response.Response
 // @Router      /topics/{id} [delete]
 func (h *TopicHandler) Delete(c *gin.Context) {
+	role, ok := middlewares.GetUserRole(c)
+	if !ok || role != "admin" {
+		response.Forbidden(c, "Only admins can delete topics")
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		response.BadRequest(c, "Invalid topic ID")

@@ -1,6 +1,8 @@
 package http
 
 import (
+	"strings"
+
 	"backend/internals/auth/controller/dto"
 	"backend/internals/auth/usecase"
 	"backend/pkgs/response"
@@ -83,7 +85,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", false, true)
 
 	// Remove refresh token from response body to prevent JS access
-	result.RefreshToken = "" 
+	result.RefreshToken = ""
 
 	response.Success(c, result)
 }
@@ -97,9 +99,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Router      /auth/logout [post]
 // @Security    ApiKeyAuth
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// Try to get refresh token from cookie to revoke it
-	refreshToken, _ := c.Cookie("refresh_token")
+	// Try to get and blacklist the access token from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		parts := strings.Split(authHeader, " ")
+		if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+			_ = h.usecase.Logout(c.Request.Context(), parts[1])
+		}
+	}
 
+	// Try to get and blacklist the refresh token from cookie
+	refreshToken, _ := c.Cookie("refresh_token")
 	if refreshToken != "" {
 		_ = h.usecase.Logout(c.Request.Context(), refreshToken)
 	}
