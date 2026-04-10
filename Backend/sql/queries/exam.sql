@@ -236,14 +236,13 @@ SELECT e.id, e.title, e.description, e.start_time, e.end_time,
 FROM exams e
 WHERE e.id = $1 AND e.status = 'published';
 
--- DISABLED: These queries reference columns not yet created in migration
--- -- name: GetExamProblemsForStudent :many
--- SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
---        ep.scoring_mode, p.title, p.description, p.difficulty
--- FROM exam_problems ep
--- JOIN problems p ON p.id = ep.problem_id
--- WHERE ep.exam_id = $1
--- ORDER BY ep.sort_order ASC;
+-- name: GetExamProblemsForStudent :many
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       p.title, p.description, p.difficulty
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1
+ORDER BY ep.sort_order ASC;
 
 -- name: GetParticipantStatus :one
 SELECT id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
@@ -300,11 +299,9 @@ SET started_at = NOW(), status = 'in_progress'
 WHERE exam_id = $1 AND user_id = $2 AND status = 'registered'
 RETURNING id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at;
 
--- DISABLED: This query references columns not yet created in migration
--- -- name: GetExamProblemDetails :one
--- SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
---        ep.scoring_mode, ep.reference_answer, 
---        p.title, p.description, p.difficulty, p.init_script, p.solution_query
--- FROM exam_problems ep
--- JOIN problems p ON p.id = ep.problem_id
--- WHERE ep.exam_id = $1 AND ep.id = $2;
+-- name: GetExamProblemDetails :one
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       p.title, p.description, p.difficulty, p.init_script, p.solution_query
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1 AND ep.id = $2;

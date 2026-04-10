@@ -95,18 +95,12 @@ type Querier interface {
 	// WHERE es.exam_id = $1 AND (es.graded_by IS NULL OR ep.scoring_mode = 'manual')
 	// ORDER BY es.submitted_at ASC;
 	GetExamGradingStats(ctx context.Context, examID int64) (GetExamGradingStatsRow, error)
+	GetExamProblemDetails(ctx context.Context, arg GetExamProblemDetailsParams) (GetExamProblemDetailsRow, error)
+	GetExamProblemsForStudent(ctx context.Context, examID int64) ([]GetExamProblemsForStudentRow, error)
 	GetExamResults(ctx context.Context, examID int64) ([]GetExamResultsRow, error)
 	GetExamSubmission(ctx context.Context, arg GetExamSubmissionParams) (ExamSubmission, error)
 	GetLatestSubmission(ctx context.Context, arg GetLatestSubmissionParams) (Submission, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
-	// DISABLED: These queries reference columns not yet created in migration
-	// -- name: GetExamProblemsForStudent :many
-	// SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order,
-	//        ep.scoring_mode, p.title, p.description, p.difficulty
-	// FROM exam_problems ep
-	// JOIN problems p ON p.id = ep.problem_id
-	// WHERE ep.exam_id = $1
-	// ORDER BY ep.sort_order ASC;
 	GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (ExamParticipant, error)
 	// =============================================
 	// PERMISSIONS QUERIES

@@ -451,6 +451,99 @@ func (q *Queries) GetExamGradingStats(ctx context.Context, examID int64) (GetExa
 	return i, err
 }
 
+const getExamProblemDetails = `-- name: GetExamProblemDetails :one
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       p.title, p.description, p.difficulty, p.init_script, p.solution_query
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1 AND ep.id = $2
+`
+
+type GetExamProblemDetailsParams struct {
+	ExamID int64 `json:"examId"`
+	ID     int64 `json:"id"`
+}
+
+type GetExamProblemDetailsRow struct {
+	ID            int64  `json:"id"`
+	ExamID        int64  `json:"examId"`
+	ProblemID     int64  `json:"problemId"`
+	Points        *int32 `json:"points"`
+	SortOrder     *int32 `json:"sortOrder"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Difficulty    string `json:"difficulty"`
+	InitScript    string `json:"initScript"`
+	SolutionQuery string `json:"solutionQuery"`
+}
+
+func (q *Queries) GetExamProblemDetails(ctx context.Context, arg GetExamProblemDetailsParams) (GetExamProblemDetailsRow, error) {
+	row := q.db.QueryRow(ctx, getExamProblemDetails, arg.ExamID, arg.ID)
+	var i GetExamProblemDetailsRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExamID,
+		&i.ProblemID,
+		&i.Points,
+		&i.SortOrder,
+		&i.Title,
+		&i.Description,
+		&i.Difficulty,
+		&i.InitScript,
+		&i.SolutionQuery,
+	)
+	return i, err
+}
+
+const getExamProblemsForStudent = `-- name: GetExamProblemsForStudent :many
+SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+       p.title, p.description, p.difficulty
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+WHERE ep.exam_id = $1
+ORDER BY ep.sort_order ASC
+`
+
+type GetExamProblemsForStudentRow struct {
+	ID          int64  `json:"id"`
+	ExamID      int64  `json:"examId"`
+	ProblemID   int64  `json:"problemId"`
+	Points      *int32 `json:"points"`
+	SortOrder   *int32 `json:"sortOrder"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Difficulty  string `json:"difficulty"`
+}
+
+func (q *Queries) GetExamProblemsForStudent(ctx context.Context, examID int64) ([]GetExamProblemsForStudentRow, error) {
+	rows, err := q.db.Query(ctx, getExamProblemsForStudent, examID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetExamProblemsForStudentRow{}
+	for rows.Next() {
+		var i GetExamProblemsForStudentRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExamID,
+			&i.ProblemID,
+			&i.Points,
+			&i.SortOrder,
+			&i.Title,
+			&i.Description,
+			&i.Difficulty,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExamResults = `-- name: GetExamResults :many
 SELECT 
     u.id as user_id, u.full_name, u.student_id,
@@ -581,7 +674,6 @@ func (q *Queries) GetParticipant(ctx context.Context, arg GetParticipantParams) 
 }
 
 const getParticipantStatus = `-- name: GetParticipantStatus :one
-
 SELECT id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
 FROM exam_participants
 WHERE exam_id = $1 AND user_id = $2
@@ -592,16 +684,6 @@ type GetParticipantStatusParams struct {
 	UserID int64 `json:"userId"`
 }
 
-// DISABLED: These queries reference columns not yet created in migration
-// -- name: GetExamProblemsForStudent :many
-// SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order,
-//
-//	ep.scoring_mode, p.title, p.description, p.difficulty
-//
-// FROM exam_problems ep
-// JOIN problems p ON p.id = ep.problem_id
-// WHERE ep.exam_id = $1
-// ORDER BY ep.sort_order ASC;
 func (q *Queries) GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (ExamParticipant, error) {
 	row := q.db.QueryRow(ctx, getParticipantStatus, arg.ExamID, arg.UserID)
 	var i ExamParticipant
