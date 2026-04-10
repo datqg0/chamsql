@@ -305,3 +305,20 @@ SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order,
 FROM exam_problems ep
 JOIN problems p ON p.id = ep.problem_id
 WHERE ep.exam_id = $1 AND ep.id = $2;
+
+-- name: ListExpiredExams :many
+SELECT id, title, created_by, start_time, end_time, duration_minutes, status
+FROM exams
+WHERE end_time < NOW()
+  AND (status = 'published' OR status = 'ongoing')
+ORDER BY end_time DESC
+LIMIT $1 OFFSET $2;
+
+-- name: ListActiveExams :many
+SELECT id, title, created_by, start_time, end_time, duration_minutes, status
+FROM exams
+WHERE start_time <= NOW()
+  AND end_time >= NOW()
+  AND (status = 'published' OR status = 'ongoing')
+ORDER BY end_time ASC
+LIMIT $1 OFFSET $2;

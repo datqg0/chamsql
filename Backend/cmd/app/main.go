@@ -12,6 +12,7 @@ import (
 	exam_consumer "backend/internals/exam/infrastructure/messaging/kafka/consumer"
 	httpServer "backend/internals/server/http"
 	submission_consumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
+	"backend/pkg/cronjob"
 	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
 )
@@ -28,6 +29,7 @@ func main() {
 		database *db.Database,
 		kafkaClient kafka.IKafka,
 		kafkaRegistry *kafka.Registry,
+		scheduler *cronjob.Scheduler,
 	) {
 		logger.Info("Starting Exam & Submission Backend...")
 
@@ -52,13 +54,18 @@ func main() {
 			go submissionEventConsumer.Start(ctx)
 		}
 
+		// Start cronjob scheduler
+		scheduler.Start(ctx)
+		logger.Info("Cronjob scheduler started")
+
 		// Graceful shutdown
 		go func() {
 			quit := make(chan os.Signal, 1)
 			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 			<-quit
 			logger.Info("Shutting down...")
-			cancel() // Stop background workers
+			cancel()         // Stop background workers
+			scheduler.Stop() // Stop cronjob scheduler
 			if kafkaClient != nil {
 				if err := kafkaClient.Close(); err != nil {
 					logger.Warn("Failed to close Kafka client: %v", err)

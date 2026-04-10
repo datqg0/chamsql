@@ -14,11 +14,13 @@ const (
 	EventSourceBackend = "backend"
 
 	// Event types for exam domain
-	EventTypeExamCreated   = "exam.created"
-	EventTypeExamStarted   = "exam.started"
-	EventTypeExamSubmitted = "exam.submitted"
-	EventTypeExamFinished  = "exam.finished"
-	EventTypeExamCancelled = "exam.cancelled"
+	EventTypeExamCreated      = "exam.created"
+	EventTypeExamStarted      = "exam.started"
+	EventTypeExamSubmitted    = "exam.submitted"
+	EventTypeExamFinished     = "exam.finished"
+	EventTypeExamCancelled    = "exam.cancelled"
+	EventTypeExamTimeExpired  = "exam.time_expired"
+	EventTypeExamTimeExtended = "exam.time_extended"
 )
 
 type ExamEventPayload struct {

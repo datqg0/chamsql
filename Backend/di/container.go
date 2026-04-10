@@ -2,12 +2,15 @@ package di
 
 import (
 	"fmt"
+	"time"
 
 	"go.uber.org/dig"
 
 	"backend/configs"
 	"backend/db"
 	aiUsecase "backend/internals/ai/usecase"
+	examRepository "backend/internals/exam/repository"
+	examUsecase "backend/internals/exam/usecase"
 	pdfHttp "backend/internals/pdf/controller/http"
 	pdfRepository "backend/internals/pdf/repository"
 	pdfUsecase "backend/internals/pdf/usecase"
@@ -16,6 +19,7 @@ import (
 	submissionConsumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
 	submissionRepository "backend/internals/submission/repository"
 	submissionUsecase "backend/internals/submission/usecase"
+	"backend/pkg/cronjob"
 	"backend/pkgs/ai"
 	"backend/pkgs/jwt"
 	"backend/pkgs/kafka"
@@ -67,6 +71,12 @@ func NewContainer() (*Container, error) {
 		provideProblemRepository,
 		provideGradingService,
 		provideGradingConsumer,
+
+		// Exam Timer & Cronjob (Phase 3)
+		provideExamRepository,
+		provideExamOutboxRepository,
+		provideExamTimerUseCase,
+		provideCronjobScheduler,
 
 		// Server
 		httpServer.NewServer,
@@ -241,6 +251,33 @@ func provideGradingConsumer(
 	gradingService submissionUsecase.IGradingService,
 ) *submissionConsumer.GradingConsumer {
 	return submissionConsumer.NewGradingConsumer(kafkaClient, database, gradingService)
+}
+
+// ===== Exam Timer & Cronjob Services =====
+
+func provideExamRepository(database *db.Database) examRepository.IExamRepository {
+	return examRepository.NewExamRepository(database)
+}
+
+func provideExamOutboxRepository(database *db.Database) examRepository.IExamOutboxRepository {
+	return examRepository.NewExamOutboxRepository(database)
+}
+
+func provideExamTimerUseCase(
+	examRepo examRepository.IExamRepository,
+	outboxRepo examRepository.IExamOutboxRepository,
+) examUsecase.IExamTimerUseCase {
+	return examUsecase.NewExamTimerUseCase(examRepo, outboxRepo)
+}
+
+func provideCronjobScheduler(examTimerUseCase examUsecase.IExamTimerUseCase) *cronjob.Scheduler {
+	scheduler := cronjob.NewScheduler()
+	// Register exam timer task to run every 20 seconds
+	scheduler.Register(
+		examUsecase.NewExamTimerTask(examTimerUseCase),
+		20*time.Second,
+	)
+	return scheduler
 }
 
 // Invoke runs a function with dependencies injected
