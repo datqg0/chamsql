@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"backend/internals/ai/domain"
-	"backend/pkgs/ai" // Need to import so we can use it
+	"backend/pkgs/ai"
 )
 
 // IAISolutionGenerator defines solution generation service
