@@ -3,9 +3,11 @@ package usecase
 import (
 	"context"
 	"errors"
+	"time"
 
 	"backend/internals/problem/controller/dto"
 	"backend/internals/problem/repository"
+	"backend/pkgs/redis"
 	"backend/sql/models"
 )
 
@@ -23,11 +25,15 @@ type IProblemUseCase interface {
 }
 
 type problemUseCase struct {
-	repo repository.IProblemRepository
+	repo  repository.IProblemRepository
+	cache redis.IRedis
 }
 
-func NewProblemUseCase(repo repository.IProblemRepository) IProblemUseCase {
-	return &problemUseCase{repo: repo}
+func NewProblemUseCase(repo repository.IProblemRepository, cache redis.IRedis) IProblemUseCase {
+	return &problemUseCase{
+		repo:  repo,
+		cache: cache,
+	}
 }
 
 func (u *problemUseCase) Create(ctx context.Context, userID int64, req *dto.CreateProblemRequest) (*dto.ProblemResponse, error) {
@@ -90,10 +96,19 @@ func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int
 		if err != nil {
 			return nil, ErrProblemNotFound
 		}
-		
+
 		testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
 
 		return toProblemWithProgressResponse(problem, testCases), nil
+	}
+
+	// Try to get from cache first (cache public problems)
+	cacheKey := "problem:" + slug
+	if u.cache != nil {
+		var cached dto.ProblemResponse
+		if err := u.cache.Get(cacheKey, &cached); err == nil {
+			return &cached, nil
+		}
 	}
 
 	problem, err := u.repo.GetBySlug(ctx, slug)
@@ -104,7 +119,14 @@ func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int
 	// Get test cases
 	testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
 
-	return toProblemResponse(problem, testCases), nil
+	response := toProblemResponse(problem, testCases)
+
+	// Cache for 24 hours
+	if u.cache != nil && (problem.IsPublic == nil || *problem.IsPublic) {
+		u.cache.SetWithExpiration(cacheKey, response, 24*time.Hour)
+	}
+
+	return response, nil
 }
 
 func (u *problemUseCase) List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error) {
@@ -272,14 +294,25 @@ func (u *problemUseCase) Update(ctx context.Context, id int64, req *dto.UpdatePr
 	// Get final test cases
 	testCases, _ := u.repo.ListTestCases(ctx, updatedProblem.ID)
 
+	// Invalidate cache with old slug
+	if u.cache != nil && problem.Slug != "" {
+		u.cache.Remove("problem:" + problem.Slug)
+	}
+
 	return toProblemResponse(updatedProblem, testCases), nil
 }
 
 func (u *problemUseCase) Delete(ctx context.Context, id int64) error {
-	_, err := u.repo.GetByID(ctx, id)
+	problem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return ErrProblemNotFound
 	}
+
+	// Invalidate cache before deletion
+	if u.cache != nil && problem.Slug != "" {
+		u.cache.Remove("problem:" + problem.Slug)
+	}
+
 	return u.repo.Delete(ctx, id)
 }
 

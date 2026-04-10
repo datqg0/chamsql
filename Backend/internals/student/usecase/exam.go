@@ -7,6 +7,7 @@ import (
 
 	"backend/db"
 	"backend/internals/student/controller/dto"
+	"backend/pkgs/redis"
 	"backend/sql/models"
 )
 
@@ -21,14 +22,18 @@ type IStudentExamUseCase interface {
 }
 
 type studentExamUseCase struct {
-	db      *db.Database
-	queries *models.Queries
+	db       *db.Database
+	queries  *models.Queries
+	executor CodeExecutor
+	cache    redis.IRedis
 }
 
-func NewStudentExamUseCase(database *db.Database) IStudentExamUseCase {
+func NewStudentExamUseCase(database *db.Database, cache redis.IRedis) IStudentExamUseCase {
 	return &studentExamUseCase{
-		db:      database,
-		queries: models.New(database.GetPool()),
+		db:       database,
+		queries:  models.New(database.GetPool()),
+		executor: NewCodeExecutor(database),
+		cache:    cache,
 	}
 }
 
@@ -321,14 +326,56 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("problem not found: %w", err)
 	}
 
-	score := 0.0
 	scoringMode := "manual"
 	if problem.ScoringMode != nil {
 		scoringMode = *problem.ScoringMode
 	}
 
-	submissionStatus := "pending"
-	submissionErrorMsg := submission.ErrorMessage
+	executionResult, err := su.executor.ExecuteCode(ctx, req.Code, problem.InitScript, problem.SolutionQuery, req.DatabaseType, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("execution error: %w", err)
+	}
+
+	score := 0.0
+	submissionStatus := "completed"
+	errorMsg := ""
+
+	if !executionResult.Success {
+		submissionStatus = "error"
+		errorMsg = executionResult.ErrorMessage
+		score = 0.0
+	} else if scoringMode == "auto" || scoringMode == "answer_key" {
+		if executionResult.IsCorrect {
+			score = 100.0
+		} else {
+			score = 0.0
+		}
+		submissionStatus = "graded"
+	} else {
+		score = 0.0
+		submissionStatus = "pending_review"
+	}
+
+	su.db.GetPool().Exec(ctx,
+		`UPDATE exam_submissions SET score = $1, is_correct = $2, status = $3, error_message = $4, execution_time_ms = $5
+		 WHERE id = $6`,
+		score, executionResult.IsCorrect, submissionStatus, errorMsg, executionResult.ExecutionTime, submission.ID)
+
+	// Cache submission result in Redis (24 hour TTL)
+	cacheKey := fmt.Sprintf("submission:%d:exam:%d:problem:%d", submission.ID, examID, examProblemID)
+	if su.cache != nil {
+		cacheData := map[string]interface{}{
+			"submission_id": submission.ID,
+			"exam_id":       examID,
+			"problem_id":    examProblemID,
+			"user_id":       userID,
+			"score":         score,
+			"is_correct":    executionResult.IsCorrect,
+			"status":        submissionStatus,
+			"error_message": errorMsg,
+		}
+		su.cache.SetWithExpiration(cacheKey, cacheData, 24*time.Hour)
+	}
 
 	attemptNum := int32(1)
 	if submission.AttemptNumber != nil {
@@ -341,10 +388,10 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		ExamProblemID:   examProblemID,
 		Status:          submissionStatus,
 		Score:           score,
-		IsCorrect:       false,
+		IsCorrect:       executionResult.IsCorrect,
 		AttemptNumber:   attemptNum,
-		ExecutionTimeMs: submission.ExecutionTimeMs,
-		ErrorMessage:    submissionErrorMsg,
+		ExecutionTimeMs: &executionResult.ExecutionTime,
+		ErrorMessage:    &errorMsg,
 		SubmittedAt:     submission.SubmittedAt.Time.Format(time.RFC3339),
 		ScoringMode:     scoringMode,
 	}, nil

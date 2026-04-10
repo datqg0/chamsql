@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"backend/configs"
@@ -167,26 +168,29 @@ func (u *authUseCase) RefreshToken(ctx context.Context, req *dto.RefreshTokenReq
 }
 
 func (u *authUseCase) Logout(ctx context.Context, tokenString string) error {
-	// With stateless access tokens, we can't really "revoke" them without a blacklist.
-	// But we CAN revoke the refresh token if provided. 
-	// However, the Logout endpoint usually receives the Access Token in Authorization header.
-	// If the frontend also sends the refresh token (e.g. via cookie), we can revoke it.
-	
-	// Since this method signature only takes a "tokenString" (which is typically the access token from the handler),
-	// and we are moving to HttpOnly cookies for refresh tokens, the Handler should handle reading the cookie
-	// and passing the refresh token to a Revoke method.
-	
-	// BUT, `IAuthUseCase.Logout` signature in this codebase seems to have been designed for Access Token blacklisting (Redis).
-	// We will repurpose it or add a new method `RevokeRefreshToken`.
-	
-	// For now, let's assume the Handler will call a new method or we change this one.
-	// Let's implement a specific RevokeRefreshToken method in the interface if possible, 
-	// or just overload this one if `tokenString` is the refresh token.
-	
-	// Given the interface `Logout(ctx, token string) error`, let's assume `token` here IS the refresh token 
-	// passed from the handler (extracted from cookie).
-	
-	return u.queries.RevokeRefreshToken(ctx, tokenString)
+	if tokenString == "" {
+		return ErrInvalidToken
+	}
+
+	claims, err := u.jwtProv.ValidateToken(tokenString)
+	if err != nil {
+		return ErrInvalidToken
+	}
+
+	expFloat, ok := (*claims)["exp"].(float64)
+	if !ok {
+		return fmt.Errorf("invalid token expiration claim")
+	}
+
+	expTime := time.Unix(int64(expFloat), 0)
+	remainingTime := time.Until(expTime)
+
+	if remainingTime > 0 && u.cache != nil && u.cache.IsConnected() {
+		blacklistKey := fmt.Sprintf("blacklist:%s", tokenString)
+		_ = u.cache.SetWithExpiration(blacklistKey, "revoked", remainingTime)
+	}
+
+	return nil
 }
 
 func (u *authUseCase) generateAuthResponse(ctx context.Context, user *models.User) (*dto.AuthResponse, error) {
@@ -233,9 +237,6 @@ func pgTime(t time.Time) pgtype.Timestamptz {
 		Valid: true,
 	}
 }
-
-
-
 
 // Helper functions
 func stringPtr(s string) *string {

@@ -3,11 +3,12 @@ package http
 import (
 	"backend/db"
 	"backend/internals/student/usecase"
+	"backend/pkgs/redis"
 	"github.com/gin-gonic/gin"
 )
 
-func Routes(rg *gin.RouterGroup, database *db.Database, authMiddleware gin.HandlerFunc) {
-	examUC := usecase.NewStudentExamUseCase(database)
+func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc) {
+	examUC := usecase.NewStudentExamUseCase(database, cache)
 	resultsUC := usecase.NewStudentResultsUseCase(database)
 	handler := NewStudentHandler(examUC, resultsUC)
 

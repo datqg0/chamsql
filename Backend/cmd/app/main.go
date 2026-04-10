@@ -14,7 +14,6 @@ import (
 	submission_consumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
 	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
-	"backend/pkgs/rabbitmq"
 )
 
 func main() {
@@ -27,7 +26,6 @@ func main() {
 		server *httpServer.Server,
 		cfg *configs.Config,
 		database *db.Database,
-		rmq *rabbitmq.RabbitMQ,
 		kafkaClient kafka.IKafka,
 		kafkaRegistry *kafka.Registry,
 	) {
@@ -61,9 +59,6 @@ func main() {
 			<-quit
 			logger.Info("Shutting down...")
 			cancel() // Stop background workers
-			if rmq != nil {
-				rmq.Close()
-			}
 			if kafkaClient != nil {
 				if err := kafkaClient.Close(); err != nil {
 					logger.Warn("Failed to close Kafka client: %v", err)

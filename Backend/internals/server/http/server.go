@@ -85,7 +85,7 @@ func (s *Server) MapRoutes() {
 	topicHttp.Routes(v1, s.database, authMiddleware)
 
 	// Problem routes (CRUD with role protection)
-	problemHttp.Routes(v1, s.database, authMiddleware)
+	problemHttp.Routes(v1, s.database, s.cache, authMiddleware)
 
 	// Submission routes (run, submit, list)
 	submissionHttp.Routes(v1, s.database, s.queryRunner, s.cfg, authMiddleware)
@@ -94,11 +94,11 @@ func (s *Server) MapRoutes() {
 	examHttp.Routes(v1, s.database, s.queryRunner, s.cfg, authMiddleware)
 
 	// Lecturer routes (class management)
-	lecturerHttp.Routes(v1, s.database, authMiddleware)
+	lecturerHttp.Routes(v1, s.database, s.cache, authMiddleware)
 
 	// Student routes (exam participation)
-	studentHttp.Routes(v1, s.database, authMiddleware)
+	studentHttp.Routes(v1, s.database, s.cache, authMiddleware)
 
 	// Admin routes (user import, stats)
-	adminHttp.Routes(v1, s.database, authMiddleware)
+	adminHttp.Routes(v1, s.database, s.cache, authMiddleware)
 }

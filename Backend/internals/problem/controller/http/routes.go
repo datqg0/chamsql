@@ -5,13 +5,14 @@ import (
 	"backend/internals/problem/repository"
 	"backend/internals/problem/usecase"
 	"backend/pkgs/middlewares"
+	"backend/pkgs/redis"
 
 	"github.com/gin-gonic/gin"
 )
 
-func Routes(rg *gin.RouterGroup, database *db.Database, authMiddleware gin.HandlerFunc) {
+func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc) {
 	repo := repository.NewProblemRepository(database)
-	uc := usecase.NewProblemUseCase(repo)
+	uc := usecase.NewProblemUseCase(repo, cache)
 	handler := NewProblemHandler(uc)
 
 	problems := rg.Group("/problems")

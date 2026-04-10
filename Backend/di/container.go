@@ -12,9 +12,7 @@ import (
 	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
 	kafka_config "backend/pkgs/messaging/kafka"
-	"backend/pkgs/minio"
 	"backend/pkgs/permissions"
-	"backend/pkgs/rabbitmq"
 	"backend/pkgs/redis"
 	"backend/pkgs/runner"
 )
@@ -36,10 +34,8 @@ func NewContainer() (*Container, error) {
 		// Infrastructure
 		provideDatabase,
 		provideRedis,
-		provideRabbitMQ,
 		provideKafkaRegistry,
 		provideKafka,
-		provideMinio,
 		provideJWTProvider,
 		provideRunner,
 		providePermissionService,
@@ -80,37 +76,6 @@ func provideRedis(cfg *configs.Config) redis.IRedis {
 	})
 	if client == nil {
 		logger.Warn("Redis not connected")
-	}
-	return client
-}
-
-func provideRabbitMQ(cfg *configs.Config) *rabbitmq.RabbitMQ {
-	if cfg.RabbitMQURI == "" {
-		return nil
-	}
-	rmq, err := rabbitmq.NewRabbitMQ(cfg.RabbitMQURI)
-	if err != nil {
-		logger.Warn("RabbitMQ not connected: %v", err)
-		return nil
-	}
-	return rmq
-}
-
-func provideMinio(cfg *configs.Config) *minio.MinioClient {
-	if cfg.MinioEndpoint == "" {
-		return nil
-	}
-	client, err := minio.NewMinioClient(
-		cfg.MinioEndpoint,
-		cfg.MinioAccessKey,
-		cfg.MinioSecretKey,
-		cfg.MinioBucket,
-		cfg.MinioBaseURL,
-		cfg.MinioUseSSL,
-	)
-	if err != nil {
-		logger.Warn("MinIO not connected: %v", err)
-		return nil
 	}
 	return client
 }

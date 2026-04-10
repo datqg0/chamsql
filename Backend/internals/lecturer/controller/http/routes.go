@@ -3,13 +3,14 @@ package http
 import (
 	"backend/db"
 	"backend/internals/lecturer/usecase"
+	"backend/pkgs/redis"
 	"github.com/gin-gonic/gin"
 )
 
 // Routes - Register all lecturer endpoints
 // Requires authentication
-func Routes(rg *gin.RouterGroup, database *db.Database, authMiddleware gin.HandlerFunc) {
-	classUC := usecase.NewLecturerClassUseCase(database)
+func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc) {
+	classUC := usecase.NewLecturerClassUseCase(database, cache)
 	gradingUC := usecase.NewGradingUseCase(database)
 	handler := NewLecturerHandler(classUC, gradingUC)
 

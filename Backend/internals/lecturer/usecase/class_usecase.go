@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 
 	"backend/db"
 	"backend/internals/lecturer/controller/dto"
+	"backend/pkgs/redis"
 	"backend/sql/models"
 )
 
@@ -35,13 +37,15 @@ type ILecturerClassUseCase interface {
 type lecturerClassUseCase struct {
 	db      *db.Database
 	queries *models.Queries
+	cache   redis.IRedis
 }
 
 // NewLecturerClassUseCase - Create new lecturer class usecase
-func NewLecturerClassUseCase(database *db.Database) ILecturerClassUseCase {
+func NewLecturerClassUseCase(database *db.Database, cache redis.IRedis) ILecturerClassUseCase {
 	return &lecturerClassUseCase{
 		db:      database,
 		queries: models.New(database.GetPool()),
+		cache:   cache,
 	}
 }
 
@@ -88,12 +92,28 @@ func (u *lecturerClassUseCase) CreateClass(ctx context.Context, lectureID int64,
 // Returns: ClassResponse with all details
 // Error: Returns error if class not found
 func (u *lecturerClassUseCase) GetClass(ctx context.Context, classID int64) (*dto.ClassResponse, error) {
+	// Try to get from cache first
+	cacheKey := fmt.Sprintf("class:%d", classID)
+	if u.cache != nil {
+		var cached dto.ClassResponse
+		if err := u.cache.Get(cacheKey, &cached); err == nil {
+			return &cached, nil
+		}
+	}
+
 	class, err := u.queries.GetClassByID(ctx, classID)
 	if err != nil {
 		return nil, errors.New("class not found")
 	}
 
-	return classToResponse(class), nil
+	response := classToResponse(class)
+
+	// Cache for 1 hour
+	if u.cache != nil {
+		u.cache.SetWithExpiration(cacheKey, response, 1*time.Hour)
+	}
+
+	return response, nil
 }
 
 // ListClasses - List all classes created by lecturer
@@ -166,6 +186,12 @@ func (u *lecturerClassUseCase) UpdateClass(ctx context.Context, classID int64, r
 		return nil, fmt.Errorf("failed to update class: %w", err)
 	}
 
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("class:%d", classID)
+	if u.cache != nil {
+		u.cache.Remove(cacheKey)
+	}
+
 	return classToResponse(updated), nil
 }
 
@@ -184,6 +210,12 @@ func (u *lecturerClassUseCase) DeleteClass(ctx context.Context, classID, lecture
 
 	if class.CreatedBy != lectureID {
 		return errors.New("only class creator can delete")
+	}
+
+	// Invalidate cache before deletion
+	cacheKey := fmt.Sprintf("class:%d", classID)
+	if u.cache != nil {
+		u.cache.Remove(cacheKey)
 	}
 
 	return u.queries.DeleteClass(ctx, classID)

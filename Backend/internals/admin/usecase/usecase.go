@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"backend/db"
 	"backend/internals/admin/controller/dto"
+	"backend/pkgs/redis"
 	"backend/sql/models"
 
 	"golang.org/x/crypto/bcrypt"
@@ -42,12 +44,14 @@ type IAdminUseCase interface {
 type adminUseCase struct {
 	db      *db.Database
 	queries *models.Queries
+	cache   redis.IRedis
 }
 
-func NewAdminUseCase(database *db.Database) IAdminUseCase {
+func NewAdminUseCase(database *db.Database, cache redis.IRedis) IAdminUseCase {
 	return &adminUseCase{
 		db:      database,
 		queries: models.New(database.GetPool()),
+		cache:   cache,
 	}
 }
 
@@ -130,6 +134,15 @@ func (u *adminUseCase) ImportUsers(ctx context.Context, req *dto.ImportUsersRequ
 }
 
 func (u *adminUseCase) GetSystemStats(ctx context.Context) (*dto.SystemStatsResponse, error) {
+	// Try to get from cache first
+	cacheKey := "stats:system"
+	if u.cache != nil {
+		var cached dto.SystemStatsResponse
+		if err := u.cache.Get(cacheKey, &cached); err == nil {
+			return &cached, nil
+		}
+	}
+
 	userCount, _ := u.queries.CountUsers(ctx)
 	problemCount, _ := u.queries.CountProblems(ctx)
 
@@ -139,11 +152,18 @@ func (u *adminUseCase) GetSystemStats(ctx context.Context) (*dto.SystemStatsResp
 		roleCount[user.Role]++
 	}
 
-	return &dto.SystemStatsResponse{
+	response := &dto.SystemStatsResponse{
 		TotalUsers:    userCount,
 		TotalProblems: problemCount,
 		UsersByRole:   roleCount,
-	}, nil
+	}
+
+	// Cache for 1 hour
+	if u.cache != nil {
+		u.cache.SetWithExpiration(cacheKey, response, 1*time.Hour)
+	}
+
+	return response, nil
 }
 
 func (u *adminUseCase) ListRoles(ctx context.Context) ([]dto.RoleResponse, error) {

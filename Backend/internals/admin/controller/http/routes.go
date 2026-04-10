@@ -4,14 +4,15 @@ import (
 	"backend/db"
 	"backend/internals/admin/usecase"
 	"backend/pkgs/middlewares"
+	"backend/pkgs/redis"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Routes - Register all admin endpoints
 // Requires authentication and admin role middleware
-func Routes(rg *gin.RouterGroup, database *db.Database, authMiddleware gin.HandlerFunc) {
-	uc := usecase.NewAdminUseCase(database)
+func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc) {
+	uc := usecase.NewAdminUseCase(database, cache)
 	handler := NewAdminHandler(uc)
 
 	admin := rg.Group("/admin")
