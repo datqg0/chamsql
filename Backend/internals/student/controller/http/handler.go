@@ -10,14 +10,16 @@ import (
 )
 
 type StudentHandler struct {
-	examUseCase    usecase.IStudentExamUseCase
-	resultsUseCase usecase.IStudentResultsUseCase
+	examUseCase     usecase.IStudentExamUseCase
+	resultsUseCase  usecase.IStudentResultsUseCase
+	practiceUseCase usecase.IPracticeUseCase
 }
 
-func NewStudentHandler(examUseCase usecase.IStudentExamUseCase, resultsUseCase usecase.IStudentResultsUseCase) *StudentHandler {
+func NewStudentHandler(examUseCase usecase.IStudentExamUseCase, resultsUseCase usecase.IStudentResultsUseCase, practiceUseCase usecase.IPracticeUseCase) *StudentHandler {
 	return &StudentHandler{
-		examUseCase:    examUseCase,
-		resultsUseCase: resultsUseCase,
+		examUseCase:     examUseCase,
+		resultsUseCase:  resultsUseCase,
+		practiceUseCase: practiceUseCase,
 	}
 }
 
@@ -290,6 +292,160 @@ func (h *StudentHandler) GetExamAnalytics(c *gin.Context) {
 	}
 
 	response, err := h.resultsUseCase.GetExamAnalytics(c.Request.Context(), examID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// =============================================
+// PRACTICE ENDPOINTS
+// =============================================
+
+// ListPublicProblems - List all public problems for practice
+func (h *StudentHandler) ListPublicProblems(c *gin.Context) {
+	page := 1
+	pageSize := 10
+
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+
+	if ps := c.Query("pageSize"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	difficulty := c.Query("difficulty")
+	topic := c.Query("topic")
+
+	response, err := h.practiceUseCase.ListPublicProblems(c.Request.Context(), page, pageSize, difficulty, topic)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetPublicProblem - Get full details of a public problem by ID
+func (h *StudentHandler) GetPublicProblem(c *gin.Context) {
+	problemID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid problem id"})
+		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userIDInt, _ := userID.(int64)
+
+	response, err := h.practiceUseCase.GetPublicProblem(c.Request.Context(), problemID, userIDInt)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetPublicProblemBySlug - Get full details of a public problem by slug
+func (h *StudentHandler) GetPublicProblemBySlug(c *gin.Context) {
+	slug := c.Param("slug")
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "slug is required"})
+		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userIDInt, _ := userID.(int64)
+
+	response, err := h.practiceUseCase.GetPublicProblemBySlug(c.Request.Context(), slug, userIDInt)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// PracticeSubmitCode - Submit code for a practice problem
+func (h *StudentHandler) PracticeSubmitCode(c *gin.Context) {
+	problemID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid problem id"})
+		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req dto.PracticeSubmitCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userIDInt, _ := userID.(int64)
+
+	response, err := h.practiceUseCase.PracticeSubmitCode(c.Request.Context(), problemID, userIDInt, &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response)
+}
+
+// ListPracticeSubmissions - List practice submissions for a problem
+func (h *StudentHandler) ListPracticeSubmissions(c *gin.Context) {
+	problemID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid problem id"})
+		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	page := 1
+	pageSize := 10
+
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+
+	if ps := c.Query("pageSize"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	userIDInt, _ := userID.(int64)
+
+	response, err := h.practiceUseCase.ListPracticeSubmissions(c.Request.Context(), problemID, userIDInt, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
