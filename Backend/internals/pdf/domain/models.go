@@ -93,3 +93,6 @@ type ValidationResult struct {
 	Errors          []string `json:"errors,omitempty"`
 	ExecutionTimeMS int      `json:"execution_time_ms"`
 }
+
+// Note: TestCaseData is defined in pdf/domain/models.go for PDF parsing
+// but also used in AI validation - see below for duplicate-avoidance pattern

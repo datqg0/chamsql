@@ -54,3 +54,12 @@ type ValidationError struct {
 	ActualValue string `json:"actual_value,omitempty"`
 	Expected    string `json:"expected,omitempty"`
 }
+
+// ValidationResult represents test validation result
+type ValidationResult struct {
+	IsValid         bool     `json:"is_valid"`
+	PassedCount     int      `json:"passed_count"`
+	TotalCount      int      `json:"total_count"`
+	Errors          []string `json:"errors,omitempty"`
+	ExecutionTimeMS int      `json:"execution_time_ms"`
+}
