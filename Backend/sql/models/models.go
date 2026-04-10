@@ -11,47 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type AiGeneratedContent struct {
-	ID                 int64              `json:"id"`
-	PdfUploadID        *int64             `json:"pdfUploadId"`
-	ProblemNumber      *int32             `json:"problemNumber"`
-	ContentType        string             `json:"contentType"`
-	OriginalContent    *string            `json:"originalContent"`
-	AiGeneratedContent *string            `json:"aiGeneratedContent"`
-	ConfidenceScore    pgtype.Numeric     `json:"confidenceScore"`
-	AiProvider         *string            `json:"aiProvider"`
-	IsApproved         *bool              `json:"isApproved"`
-	LecturerNotes      *string            `json:"lecturerNotes"`
-	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
-}
-
-type Class struct {
-	ID          int64              `json:"id"`
-	Name        string             `json:"name"`
-	Description *string            `json:"description"`
-	Code        string             `json:"code"`
-	CreatedBy   int64              `json:"createdBy"`
-	Semester    *string            `json:"semester"`
-	Year        *int32             `json:"year"`
-	IsActive    *bool              `json:"isActive"`
-	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
-}
-
-type ClassExam struct {
-	ID        int64              `json:"id"`
-	ClassID   int64              `json:"classId"`
-	ExamID    int64              `json:"examId"`
-	CreatedAt pgtype.Timestamptz `json:"createdAt"`
-}
-
-type ClassMember struct {
-	ID       int64              `json:"id"`
-	ClassID  int64              `json:"classId"`
-	UserID   int64              `json:"userId"`
-	Role     *string            `json:"role"`
-	JoinedAt pgtype.Timestamptz `json:"joinedAt"`
+type AuditLog struct {
+	ID           int64              `json:"id"`
+	UserID       *int64             `json:"userId"`
+	Action       string             `json:"action"`
+	ResourceType *string            `json:"resourceType"`
+	ResourceID   *int64             `json:"resourceId"`
+	OldValue     []byte             `json:"oldValue"`
+	NewValue     []byte             `json:"newValue"`
+	Reason       *string            `json:"reason"`
+	IpAddress    *string            `json:"ipAddress"`
+	UserAgent    *string            `json:"userAgent"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
 }
 
 type Exam struct {
@@ -85,13 +56,11 @@ type ExamParticipant struct {
 }
 
 type ExamProblem struct {
-	ID              int64   `json:"id"`
-	ExamID          int64   `json:"examId"`
-	ProblemID       int64   `json:"problemId"`
-	Points          *int32  `json:"points"`
-	SortOrder       *int32  `json:"sortOrder"`
-	ScoringMode     *string `json:"scoringMode"`
-	ReferenceAnswer *string `json:"referenceAnswer"`
+	ID        int64  `json:"id"`
+	ExamID    int64  `json:"examId"`
+	ProblemID int64  `json:"problemId"`
+	Points    *int32 `json:"points"`
+	SortOrder *int32 `json:"sortOrder"`
 }
 
 type ExamSubmission struct {
@@ -110,64 +79,38 @@ type ExamSubmission struct {
 	Score           pgtype.Numeric     `json:"score"`
 	AttemptNumber   *int32             `json:"attemptNumber"`
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
-	GradedBy        *int64             `json:"gradedBy"`
-	GradedAt        pgtype.Timestamptz `json:"gradedAt"`
-	TestCaseResults []byte             `json:"testCaseResults"`
-}
-
-type ExcelExport struct {
-	ID         int64              `json:"id"`
-	ExamID     *int64             `json:"examId"`
-	ExportType string             `json:"exportType"`
-	FilePath   *string            `json:"filePath"`
-	FileName   *string            `json:"fileName"`
-	CreatedBy  *int64             `json:"createdBy"`
-	RowCount   *int32             `json:"rowCount"`
-	CreatedAt  pgtype.Timestamptz `json:"createdAt"`
 }
 
 type OutboxEvent struct {
-	ID          uuid.UUID        `json:"id"`
-	Topic       string           `json:"topic"`
-	Payload     json.RawMessage  `json:"payload"`
-	Status      string           `json:"status"`
-	RetryCount  int32            `json:"retryCount"`
-	CreatedAt   pgtype.Timestamp `json:"createdAt"`
-	PublishedAt pgtype.Timestamp `json:"publishedAt"`
-	UpdatedAt   pgtype.Timestamp `json:"updatedAt"`
-}
-
-type PdfUpload struct {
-	ID               int64              `json:"id"`
-	LecturerID       int64              `json:"lecturerId"`
-	FilePath         string             `json:"filePath"`
-	FileName         string             `json:"fileName"`
-	OriginalFilename *string            `json:"originalFilename"`
-	Status           string             `json:"status"`
-	ExtractionResult []byte             `json:"extractionResult"`
-	ErrorMessage     *string            `json:"errorMessage"`
-	CreatedAt        pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt        pgtype.Timestamptz `json:"updatedAt"`
+	ID           uuid.UUID        `json:"id"`
+	Topic        string           `json:"topic"`
+	Payload      json.RawMessage  `json:"payload"`
+	Status       string           `json:"status"`
+	RetryCount   int32            `json:"retryCount"`
+	CreatedAt    pgtype.Timestamp `json:"createdAt"`
+	PublishedAt  pgtype.Timestamp `json:"publishedAt"`
+	ErrorMessage *string          `json:"errorMessage"`
+	UpdatedAt    pgtype.Timestamp `json:"updatedAt"`
 }
 
 type Permission struct {
-	ID           int32            `json:"id"`
-	ResourceType string           `json:"resourceType"`
-	Action       string           `json:"action"`
-	Description  *string          `json:"description"`
-	CreatedAt    pgtype.Timestamp `json:"createdAt"`
+	ID          int32              `json:"id"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	Category    *string            `json:"category"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 }
 
-type PermissionAuditLog struct {
-	ID                 int32            `json:"id"`
-	Action             string           `json:"action"`
-	TargetUserID       *int32           `json:"targetUserId"`
-	TargetRoleID       *int32           `json:"targetRoleId"`
-	TargetResourceType *string          `json:"targetResourceType"`
-	TargetResourceID   *int64           `json:"targetResourceId"`
-	PerformedBy        int32            `json:"performedBy"`
-	Details            []byte           `json:"details"`
-	CreatedAt          pgtype.Timestamp `json:"createdAt"`
+type PermissionGrant struct {
+	ID           int64              `json:"id"`
+	UserID       int64              `json:"userId"`
+	ResourceType string             `json:"resourceType"`
+	ResourceID   int64              `json:"resourceId"`
+	Permission   string             `json:"permission"`
+	GrantedAt    pgtype.Timestamptz `json:"grantedAt"`
+	GrantedBy    int64              `json:"grantedBy"`
+	ExpiresAt    pgtype.Timestamptz `json:"expiresAt"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
 }
 
 type Problem struct {
@@ -188,23 +131,6 @@ type Problem struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
-	AiGenerated        *bool              `json:"aiGenerated"`
-	AiProvider         *string            `json:"aiProvider"`
-	AiConfidenceScore  pgtype.Numeric     `json:"aiConfidenceScore"`
-}
-
-type ProblemReviewQueue struct {
-	ID            int64              `json:"id"`
-	PdfUploadID   *int64             `json:"pdfUploadId"`
-	ProblemNumber *int32             `json:"problemNumber"`
-	ProblemDraft  json.RawMessage    `json:"problemDraft"`
-	Status        string             `json:"status"`
-	ReviewerID    *int64             `json:"reviewerId"`
-	ReviewNotes   *string            `json:"reviewNotes"`
-	EditsMade     []byte             `json:"editsMade"`
-	ReviewedAt    pgtype.Timestamptz `json:"reviewedAt"`
-	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt     pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type ProblemTestCase struct {
@@ -236,30 +162,19 @@ type RefreshToken struct {
 	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
 }
 
-type ResourceAccessControl struct {
-	ID             int32            `json:"id"`
-	ResourceType   string           `json:"resourceType"`
-	ResourceID     int64            `json:"resourceId"`
-	UserID         int32            `json:"userId"`
-	PermissionType string           `json:"permissionType"`
-	GrantedAt      pgtype.Timestamp `json:"grantedAt"`
-	GrantedBy      *int32           `json:"grantedBy"`
-}
-
 type Role struct {
-	ID           int32            `json:"id"`
-	Name         string           `json:"name"`
-	Description  *string          `json:"description"`
-	IsExtensible *bool            `json:"isExtensible"`
-	CreatedAt    pgtype.Timestamp `json:"createdAt"`
-	UpdatedAt    pgtype.Timestamp `json:"updatedAt"`
+	ID          int32              `json:"id"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	IsSystem    *bool              `json:"isSystem"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 }
 
 type RolePermission struct {
-	ID           int32            `json:"id"`
-	RoleID       int32            `json:"roleId"`
-	PermissionID int32            `json:"permissionId"`
-	CreatedAt    pgtype.Timestamp `json:"createdAt"`
+	ID           int64              `json:"id"`
+	RoleID       int32              `json:"roleId"`
+	PermissionID int32              `json:"permissionId"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
 }
 
 type Submission struct {
@@ -290,23 +205,6 @@ type SubmissionTestResult struct {
 	ErrorMessage    *string            `json:"errorMessage"`
 	IsCorrect       *bool              `json:"isCorrect"`
 	CreatedAt       pgtype.Timestamptz `json:"createdAt"`
-}
-
-type TestCaseTemplate struct {
-	ID               int64              `json:"id"`
-	ProblemID        *int64             `json:"problemId"`
-	TestCaseNumber   *int32             `json:"testCaseNumber"`
-	Description      *string            `json:"description"`
-	SchemaSql        string             `json:"schemaSql"`
-	TestDataSql      string             `json:"testDataSql"`
-	ExpectedOutput   json.RawMessage    `json:"expectedOutput"`
-	IsPublic         *bool              `json:"isPublic"`
-	Difficulty       *string            `json:"difficulty"`
-	CreatedBy        *int64             `json:"createdBy"`
-	IsValidated      *bool              `json:"isValidated"`
-	ValidationStatus *string            `json:"validationStatus"`
-	ValidationError  *string            `json:"validationError"`
-	CreatedAt        pgtype.Timestamptz `json:"createdAt"`
 }
 
 type Topic struct {
@@ -347,9 +245,9 @@ type UserProgress struct {
 }
 
 type UserRole struct {
-	ID         int32            `json:"id"`
-	UserID     int32            `json:"userId"`
-	RoleID     int32            `json:"roleId"`
-	AssignedAt pgtype.Timestamp `json:"assignedAt"`
-	AssignedBy *int32           `json:"assignedBy"`
+	ID         int64              `json:"id"`
+	UserID     int64              `json:"userId"`
+	RoleID     int32              `json:"roleId"`
+	AssignedAt pgtype.Timestamptz `json:"assignedAt"`
+	AssignedBy *int64             `json:"assignedBy"`
 }

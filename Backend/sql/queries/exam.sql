@@ -189,30 +189,31 @@ ORDER BY ep.total_score DESC;
 -- GRADING QUERIES
 -- =============================================
 
--- name: GetExamSubmissionForGrading :one
-SELECT es.*, ep.scoring_mode, ep.reference_answer, ep.points as max_points
-FROM exam_submissions es
-JOIN exam_problems ep ON ep.id = es.exam_problem_id
-WHERE es.id = $1;
+-- DISABLED: These queries reference columns not yet created in migration
+-- -- name: GetExamSubmissionForGrading :one
+-- SELECT es.*, ep.scoring_mode, ep.reference_answer, ep.points as max_points
+-- FROM exam_submissions es
+-- JOIN exam_problems ep ON ep.id = es.exam_problem_id
+-- WHERE es.id = $1;
 
--- name: UpdateExamSubmissionGrade :one
-UPDATE exam_submissions SET
-    score = $2,
-    graded_by = $3,
-    graded_at = NOW(),
-    status = 'graded'
-WHERE id = $1
-RETURNING *;
+-- -- name: UpdateExamSubmissionGrade :one
+-- UPDATE exam_submissions SET
+--     score = $2,
+--     graded_by = $3,
+--     graded_at = NOW(),
+--     status = 'graded'
+-- WHERE id = $1
+-- RETURNING *;
 
--- name: ListUngradedExamSubmissions :many
-SELECT es.*, ep.scoring_mode, ep.reference_answer, ep.points as max_points,
-    p.title as problem_title, u.full_name as student_name
-FROM exam_submissions es
-JOIN exam_problems ep ON ep.id = es.exam_problem_id
-JOIN problems p ON p.id = ep.problem_id
-JOIN users u ON u.id = es.user_id
-WHERE es.exam_id = $1 AND (es.graded_by IS NULL OR ep.scoring_mode = 'manual')
-ORDER BY es.submitted_at ASC;
+-- -- name: ListUngradedExamSubmissions :many
+-- SELECT es.*, ep.scoring_mode, ep.reference_answer, ep.points as max_points,
+--     p.title as problem_title, u.full_name as student_name
+-- FROM exam_submissions es
+-- JOIN exam_problems ep ON ep.id = es.exam_problem_id
+-- JOIN problems p ON p.id = ep.problem_id
+-- JOIN users u ON u.id = es.user_id
+-- WHERE es.exam_id = $1 AND (es.graded_by IS NULL OR ep.scoring_mode = 'manual')
+-- ORDER BY es.submitted_at ASC;
 
 -- name: GetExamGradingStats :one
 SELECT 
@@ -235,13 +236,14 @@ SELECT e.id, e.title, e.description, e.start_time, e.end_time,
 FROM exams e
 WHERE e.id = $1 AND e.status = 'published';
 
--- name: GetExamProblemsForStudent :many
-SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
-       ep.scoring_mode, p.title, p.description, p.difficulty
-FROM exam_problems ep
-JOIN problems p ON p.id = ep.problem_id
-WHERE ep.exam_id = $1
-ORDER BY ep.sort_order ASC;
+-- DISABLED: These queries reference columns not yet created in migration
+-- -- name: GetExamProblemsForStudent :many
+-- SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+--        ep.scoring_mode, p.title, p.description, p.difficulty
+-- FROM exam_problems ep
+-- JOIN problems p ON p.id = ep.problem_id
+-- WHERE ep.exam_id = $1
+-- ORDER BY ep.sort_order ASC;
 
 -- name: GetParticipantStatus :one
 SELECT id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at
@@ -298,10 +300,11 @@ SET started_at = NOW(), status = 'in_progress'
 WHERE exam_id = $1 AND user_id = $2 AND status = 'registered'
 RETURNING id, exam_id, user_id, started_at, submitted_at, total_score, status, created_at;
 
--- name: GetExamProblemDetails :one
-SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
-       ep.scoring_mode, ep.reference_answer, 
-       p.title, p.description, p.difficulty, p.init_script, p.solution_query
-FROM exam_problems ep
-JOIN problems p ON p.id = ep.problem_id
-WHERE ep.exam_id = $1 AND ep.id = $2;
+-- DISABLED: This query references columns not yet created in migration
+-- -- name: GetExamProblemDetails :one
+-- SELECT ep.id, ep.exam_id, ep.problem_id, ep.points, ep.sort_order, 
+--        ep.scoring_mode, ep.reference_answer, 
+--        p.title, p.description, p.difficulty, p.init_script, p.solution_query
+-- FROM exam_problems ep
+-- JOIN problems p ON p.id = ep.problem_id
+-- WHERE ep.exam_id = $1 AND ep.id = $2;

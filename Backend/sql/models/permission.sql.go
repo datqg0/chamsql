@@ -7,210 +7,188 @@ package models
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const checkResourceAccess = `-- name: CheckResourceAccess :one
+const checkPermissionGrant = `-- name: CheckPermissionGrant :one
 SELECT EXISTS(
-  SELECT 1 FROM resource_access_control
-  WHERE resource_type = $1
-    AND resource_id = $2
-    AND user_id = $3
-    AND permission_type IN ('owner', 'editor', 'viewer')
-) AS has_access
+  SELECT 1 FROM permission_grants
+  WHERE user_id = $1
+    AND resource_type = $2
+    AND resource_id = $3
+    AND permission = $4
+    AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+) AS has_grant
 `
 
-type CheckResourceAccessParams struct {
+type CheckPermissionGrantParams struct {
+	UserID       int64  `json:"userId"`
 	ResourceType string `json:"resourceType"`
 	ResourceID   int64  `json:"resourceId"`
-	UserID       int32  `json:"userId"`
+	Permission   string `json:"permission"`
 }
 
-func (q *Queries) CheckResourceAccess(ctx context.Context, arg CheckResourceAccessParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkResourceAccess, arg.ResourceType, arg.ResourceID, arg.UserID)
-	var has_access bool
-	err := row.Scan(&has_access)
-	return has_access, err
+func (q *Queries) CheckPermissionGrant(ctx context.Context, arg CheckPermissionGrantParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkPermissionGrant,
+		arg.UserID,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Permission,
+	)
+	var has_grant bool
+	err := row.Scan(&has_grant)
+	return has_grant, err
 }
 
-const checkResourceOwner = `-- name: CheckResourceOwner :one
-SELECT EXISTS(
-  SELECT 1 FROM resource_access_control
-  WHERE resource_type = $1
-    AND resource_id = $2
-    AND user_id = $3
-    AND permission_type = 'owner'
-) AS is_owner
+const cleanupExpiredPermissionGrants = `-- name: CleanupExpiredPermissionGrants :exec
+DELETE FROM permission_grants
+WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP
 `
 
-type CheckResourceOwnerParams struct {
-	ResourceType string `json:"resourceType"`
-	ResourceID   int64  `json:"resourceId"`
-	UserID       int32  `json:"userId"`
-}
-
-func (q *Queries) CheckResourceOwner(ctx context.Context, arg CheckResourceOwnerParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkResourceOwner, arg.ResourceType, arg.ResourceID, arg.UserID)
-	var is_owner bool
-	err := row.Scan(&is_owner)
-	return is_owner, err
-}
-
-const checkUserHasPermission = `-- name: CheckUserHasPermission :one
-SELECT EXISTS(
-  SELECT 1 FROM user_roles ur
-  JOIN role_permissions rp ON ur.role_id = rp.role_id
-  JOIN permissions p ON rp.permission_id = p.id
-  WHERE ur.user_id = $1
-    AND p.resource_type = $2
-    AND p.action = $3
-) AS has_permission
-`
-
-type CheckUserHasPermissionParams struct {
-	UserID       int32  `json:"userId"`
-	ResourceType string `json:"resourceType"`
-	Action       string `json:"action"`
-}
-
-func (q *Queries) CheckUserHasPermission(ctx context.Context, arg CheckUserHasPermissionParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkUserHasPermission, arg.UserID, arg.ResourceType, arg.Action)
-	var has_permission bool
-	err := row.Scan(&has_permission)
-	return has_permission, err
+func (q *Queries) CleanupExpiredPermissionGrants(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, cleanupExpiredPermissionGrants)
+	return err
 }
 
 const createAuditLog = `-- name: CreateAuditLog :one
 
-INSERT INTO permission_audit_log (action, target_user_id, target_role_id, target_resource_type, target_resource_id, performed_by, details)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, action, target_user_id, target_role_id, target_resource_type, target_resource_id, performed_by, details, created_at
+INSERT INTO audit_logs (user_id, action, resource_type, resource_id, old_value, new_value, reason, ip_address, user_agent)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, user_id, action, resource_type, resource_id, old_value, new_value, reason, ip_address, user_agent, created_at
 `
 
 type CreateAuditLogParams struct {
-	Action             string  `json:"action"`
-	TargetUserID       *int32  `json:"targetUserId"`
-	TargetRoleID       *int32  `json:"targetRoleId"`
-	TargetResourceType *string `json:"targetResourceType"`
-	TargetResourceID   *int64  `json:"targetResourceId"`
-	PerformedBy        int32   `json:"performedBy"`
-	Details            []byte  `json:"details"`
+	UserID       *int64  `json:"userId"`
+	Action       string  `json:"action"`
+	ResourceType *string `json:"resourceType"`
+	ResourceID   *int64  `json:"resourceId"`
+	OldValue     []byte  `json:"oldValue"`
+	NewValue     []byte  `json:"newValue"`
+	Reason       *string `json:"reason"`
+	IpAddress    *string `json:"ipAddress"`
+	UserAgent    *string `json:"userAgent"`
 }
 
 // =============================================
 // AUDIT LOG QUERIES
 // =============================================
-func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (PermissionAuditLog, error) {
+func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error) {
 	row := q.db.QueryRow(ctx, createAuditLog,
+		arg.UserID,
 		arg.Action,
-		arg.TargetUserID,
-		arg.TargetRoleID,
-		arg.TargetResourceType,
-		arg.TargetResourceID,
-		arg.PerformedBy,
-		arg.Details,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.OldValue,
+		arg.NewValue,
+		arg.Reason,
+		arg.IpAddress,
+		arg.UserAgent,
 	)
-	var i PermissionAuditLog
+	var i AuditLog
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Action,
-		&i.TargetUserID,
-		&i.TargetRoleID,
-		&i.TargetResourceType,
-		&i.TargetResourceID,
-		&i.PerformedBy,
-		&i.Details,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Reason,
+		&i.IpAddress,
+		&i.UserAgent,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const createPermission = `-- name: CreatePermission :one
-INSERT INTO permissions (resource_type, action, description)
+INSERT INTO permissions (name, description, category)
 VALUES ($1, $2, $3)
-RETURNING id, resource_type, action, description, created_at
+RETURNING id, name, description, category, created_at
 `
 
 type CreatePermissionParams struct {
-	ResourceType string  `json:"resourceType"`
-	Action       string  `json:"action"`
-	Description  *string `json:"description"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Category    *string `json:"category"`
 }
 
 func (q *Queries) CreatePermission(ctx context.Context, arg CreatePermissionParams) (Permission, error) {
-	row := q.db.QueryRow(ctx, createPermission, arg.ResourceType, arg.Action, arg.Description)
+	row := q.db.QueryRow(ctx, createPermission, arg.Name, arg.Description, arg.Category)
 	var i Permission
 	err := row.Scan(
 		&i.ID,
-		&i.ResourceType,
-		&i.Action,
+		&i.Name,
 		&i.Description,
+		&i.Category,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
-const createResourceAccess = `-- name: CreateResourceAccess :one
-
-INSERT INTO resource_access_control (resource_type, resource_id, user_id, permission_type, granted_by)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (resource_type, resource_id, user_id, permission_type) DO NOTHING
-RETURNING id, resource_type, resource_id, user_id, permission_type, granted_at, granted_by
+const createPermissionGrant = `-- name: CreatePermissionGrant :one
+INSERT INTO permission_grants (user_id, resource_type, resource_id, permission, granted_by, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (user_id, resource_type, resource_id, permission) DO UPDATE
+SET expires_at = EXCLUDED.expires_at, granted_by = EXCLUDED.granted_by
+RETURNING id, user_id, resource_type, resource_id, permission, granted_at, granted_by, expires_at, created_at
 `
 
-type CreateResourceAccessParams struct {
-	ResourceType   string `json:"resourceType"`
-	ResourceID     int64  `json:"resourceId"`
-	UserID         int32  `json:"userId"`
-	PermissionType string `json:"permissionType"`
-	GrantedBy      *int32 `json:"grantedBy"`
+type CreatePermissionGrantParams struct {
+	UserID       int64              `json:"userId"`
+	ResourceType string             `json:"resourceType"`
+	ResourceID   int64              `json:"resourceId"`
+	Permission   string             `json:"permission"`
+	GrantedBy    int64              `json:"grantedBy"`
+	ExpiresAt    pgtype.Timestamptz `json:"expiresAt"`
 }
 
-// =============================================
-// RESOURCE ACCESS CONTROL QUERIES
-// =============================================
-func (q *Queries) CreateResourceAccess(ctx context.Context, arg CreateResourceAccessParams) (ResourceAccessControl, error) {
-	row := q.db.QueryRow(ctx, createResourceAccess,
+func (q *Queries) CreatePermissionGrant(ctx context.Context, arg CreatePermissionGrantParams) (PermissionGrant, error) {
+	row := q.db.QueryRow(ctx, createPermissionGrant,
+		arg.UserID,
 		arg.ResourceType,
 		arg.ResourceID,
-		arg.UserID,
-		arg.PermissionType,
+		arg.Permission,
 		arg.GrantedBy,
+		arg.ExpiresAt,
 	)
-	var i ResourceAccessControl
+	var i PermissionGrant
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.ResourceType,
 		&i.ResourceID,
-		&i.UserID,
-		&i.PermissionType,
+		&i.Permission,
 		&i.GrantedAt,
 		&i.GrantedBy,
+		&i.ExpiresAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const createRole = `-- name: CreateRole :one
-INSERT INTO roles (name, description, is_extensible)
+INSERT INTO roles (name, description, is_system)
 VALUES ($1, $2, $3)
-RETURNING id, name, description, is_extensible, created_at, updated_at
+RETURNING id, name, description, is_system, created_at
 `
 
 type CreateRoleParams struct {
-	Name         string  `json:"name"`
-	Description  *string `json:"description"`
-	IsExtensible *bool   `json:"isExtensible"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	IsSystem    *bool   `json:"isSystem"`
 }
 
 func (q *Queries) CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error) {
-	row := q.db.QueryRow(ctx, createRole, arg.Name, arg.Description, arg.IsExtensible)
+	row := q.db.QueryRow(ctx, createRole, arg.Name, arg.Description, arg.IsSystem)
 	var i Role
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Description,
-		&i.IsExtensible,
+		&i.IsSystem,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -225,7 +203,7 @@ func (q *Queries) DeletePermission(ctx context.Context, id int32) error {
 }
 
 const deleteRole = `-- name: DeleteRole :exec
-DELETE FROM roles WHERE id = $1
+DELETE FROM roles WHERE id = $1 AND is_system = false
 `
 
 func (q *Queries) DeleteRole(ctx context.Context, id int32) error {
@@ -233,50 +211,9 @@ func (q *Queries) DeleteRole(ctx context.Context, id int32) error {
 	return err
 }
 
-const getAuditLog = `-- name: GetAuditLog :many
-SELECT id, action, target_user_id, target_role_id, target_resource_type, target_resource_id, performed_by, details, created_at FROM permission_audit_log
-ORDER BY created_at DESC
-LIMIT $1 OFFSET $2
-`
-
-type GetAuditLogParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
-}
-
-func (q *Queries) GetAuditLog(ctx context.Context, arg GetAuditLogParams) ([]PermissionAuditLog, error) {
-	rows, err := q.db.Query(ctx, getAuditLog, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PermissionAuditLog{}
-	for rows.Next() {
-		var i PermissionAuditLog
-		if err := rows.Scan(
-			&i.ID,
-			&i.Action,
-			&i.TargetUserID,
-			&i.TargetRoleID,
-			&i.TargetResourceType,
-			&i.TargetResourceID,
-			&i.PerformedBy,
-			&i.Details,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getPermissionByID = `-- name: GetPermissionByID :one
 
-SELECT id, resource_type, action, description, created_at FROM permissions WHERE id = $1
+SELECT id, name, description, category, created_at FROM permissions WHERE id = $1
 `
 
 // =============================================
@@ -287,56 +224,72 @@ func (q *Queries) GetPermissionByID(ctx context.Context, id int32) (Permission, 
 	var i Permission
 	err := row.Scan(
 		&i.ID,
-		&i.ResourceType,
-		&i.Action,
+		&i.Name,
 		&i.Description,
+		&i.Category,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
-const getResourceAccess = `-- name: GetResourceAccess :many
-SELECT id, resource_type, resource_id, user_id, permission_type, granted_at, granted_by FROM resource_access_control
-WHERE resource_type = $1 AND resource_id = $2
-ORDER BY permission_type, user_id
+const getPermissionByName = `-- name: GetPermissionByName :one
+SELECT id, name, description, category, created_at FROM permissions WHERE name = $1
 `
 
-type GetResourceAccessParams struct {
-	ResourceType string `json:"resourceType"`
-	ResourceID   int64  `json:"resourceId"`
+func (q *Queries) GetPermissionByName(ctx context.Context, name string) (Permission, error) {
+	row := q.db.QueryRow(ctx, getPermissionByName, name)
+	var i Permission
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.Category,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
-func (q *Queries) GetResourceAccess(ctx context.Context, arg GetResourceAccessParams) ([]ResourceAccessControl, error) {
-	rows, err := q.db.Query(ctx, getResourceAccess, arg.ResourceType, arg.ResourceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ResourceAccessControl{}
-	for rows.Next() {
-		var i ResourceAccessControl
-		if err := rows.Scan(
-			&i.ID,
-			&i.ResourceType,
-			&i.ResourceID,
-			&i.UserID,
-			&i.PermissionType,
-			&i.GrantedAt,
-			&i.GrantedBy,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+const getPermissionGrant = `-- name: GetPermissionGrant :one
+
+SELECT id, user_id, resource_type, resource_id, permission, granted_at, granted_by, expires_at, created_at FROM permission_grants
+WHERE user_id = $1 AND resource_type = $2 AND resource_id = $3 AND permission = $4
+`
+
+type GetPermissionGrantParams struct {
+	UserID       int64  `json:"userId"`
+	ResourceType string `json:"resourceType"`
+	ResourceID   int64  `json:"resourceId"`
+	Permission   string `json:"permission"`
+}
+
+// =============================================
+// PERMISSION GRANTS QUERIES
+// =============================================
+func (q *Queries) GetPermissionGrant(ctx context.Context, arg GetPermissionGrantParams) (PermissionGrant, error) {
+	row := q.db.QueryRow(ctx, getPermissionGrant,
+		arg.UserID,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Permission,
+	)
+	var i PermissionGrant
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.Permission,
+		&i.GrantedAt,
+		&i.GrantedBy,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getRoleByID = `-- name: GetRoleByID :one
 
-SELECT id, name, description, is_extensible, created_at, updated_at FROM roles WHERE id = $1
+SELECT id, name, description, is_system, created_at FROM roles WHERE id = $1
 `
 
 // =============================================
@@ -349,15 +302,14 @@ func (q *Queries) GetRoleByID(ctx context.Context, id int32) (Role, error) {
 		&i.ID,
 		&i.Name,
 		&i.Description,
-		&i.IsExtensible,
+		&i.IsSystem,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getRoleByName = `-- name: GetRoleByName :one
-SELECT id, name, description, is_extensible, created_at, updated_at FROM roles WHERE name = $1
+SELECT id, name, description, is_system, created_at FROM roles WHERE name = $1
 `
 
 func (q *Queries) GetRoleByName(ctx context.Context, name string) (Role, error) {
@@ -367,19 +319,18 @@ func (q *Queries) GetRoleByName(ctx context.Context, name string) (Role, error) 
 		&i.ID,
 		&i.Name,
 		&i.Description,
-		&i.IsExtensible,
+		&i.IsSystem,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getRolePermissions = `-- name: GetRolePermissions :many
 
-SELECT p.id, p.resource_type, p.action, p.description, p.created_at FROM permissions p
+SELECT p.id, p.name, p.description, p.category, p.created_at FROM permissions p
 JOIN role_permissions rp ON p.id = rp.permission_id
 WHERE rp.role_id = $1
-ORDER BY p.resource_type, p.action
+ORDER BY p.category, p.name
 `
 
 // =============================================
@@ -396,92 +347,10 @@ func (q *Queries) GetRolePermissions(ctx context.Context, roleID int32) ([]Permi
 		var i Permission
 		if err := rows.Scan(
 			&i.ID,
-			&i.ResourceType,
-			&i.Action,
+			&i.Name,
 			&i.Description,
+			&i.Category,
 			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getUserAuditLog = `-- name: GetUserAuditLog :many
-SELECT id, action, target_user_id, target_role_id, target_resource_type, target_resource_id, performed_by, details, created_at FROM permission_audit_log
-WHERE target_user_id = $1 OR performed_by = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
-`
-
-type GetUserAuditLogParams struct {
-	TargetUserID *int32 `json:"targetUserId"`
-	Limit        int32  `json:"limit"`
-	Offset       int32  `json:"offset"`
-}
-
-func (q *Queries) GetUserAuditLog(ctx context.Context, arg GetUserAuditLogParams) ([]PermissionAuditLog, error) {
-	rows, err := q.db.Query(ctx, getUserAuditLog, arg.TargetUserID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PermissionAuditLog{}
-	for rows.Next() {
-		var i PermissionAuditLog
-		if err := rows.Scan(
-			&i.ID,
-			&i.Action,
-			&i.TargetUserID,
-			&i.TargetRoleID,
-			&i.TargetResourceType,
-			&i.TargetResourceID,
-			&i.PerformedBy,
-			&i.Details,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getUserResourceAccess = `-- name: GetUserResourceAccess :many
-SELECT id, resource_type, resource_id, user_id, permission_type, granted_at, granted_by FROM resource_access_control
-WHERE user_id = $1 AND resource_type = $2
-ORDER BY permission_type
-`
-
-type GetUserResourceAccessParams struct {
-	UserID       int32  `json:"userId"`
-	ResourceType string `json:"resourceType"`
-}
-
-func (q *Queries) GetUserResourceAccess(ctx context.Context, arg GetUserResourceAccessParams) ([]ResourceAccessControl, error) {
-	rows, err := q.db.Query(ctx, getUserResourceAccess, arg.UserID, arg.ResourceType)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ResourceAccessControl{}
-	for rows.Next() {
-		var i ResourceAccessControl
-		if err := rows.Scan(
-			&i.ID,
-			&i.ResourceType,
-			&i.ResourceID,
-			&i.UserID,
-			&i.PermissionType,
-			&i.GrantedAt,
-			&i.GrantedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -497,7 +366,7 @@ const getUserRoleIDs = `-- name: GetUserRoleIDs :many
 SELECT role_id FROM user_roles WHERE user_id = $1
 `
 
-func (q *Queries) GetUserRoleIDs(ctx context.Context, userID int32) ([]int32, error) {
+func (q *Queries) GetUserRoleIDs(ctx context.Context, userID int64) ([]int32, error) {
 	rows, err := q.db.Query(ctx, getUserRoleIDs, userID)
 	if err != nil {
 		return nil, err
@@ -519,7 +388,7 @@ func (q *Queries) GetUserRoleIDs(ctx context.Context, userID int32) ([]int32, er
 
 const getUserRoles = `-- name: GetUserRoles :many
 
-SELECT r.id, r.name, r.description, r.is_extensible, r.created_at, r.updated_at FROM roles r
+SELECT r.id, r.name, r.description, r.is_system, r.created_at FROM roles r
 JOIN user_roles ur ON r.id = ur.role_id
 WHERE ur.user_id = $1
 ORDER BY r.name
@@ -528,7 +397,7 @@ ORDER BY r.name
 // =============================================
 // USER ROLES QUERIES
 // =============================================
-func (q *Queries) GetUserRoles(ctx context.Context, userID int32) ([]Role, error) {
+func (q *Queries) GetUserRoles(ctx context.Context, userID int64) ([]Role, error) {
 	rows, err := q.db.Query(ctx, getUserRoles, userID)
 	if err != nil {
 		return nil, err
@@ -541,9 +410,8 @@ func (q *Queries) GetUserRoles(ctx context.Context, userID int32) ([]Role, error
 			&i.ID,
 			&i.Name,
 			&i.Description,
-			&i.IsExtensible,
+			&i.IsSystem,
 			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -587,9 +455,9 @@ RETURNING id, user_id, role_id, assigned_at, assigned_by
 `
 
 type GrantRoleToUserParams struct {
-	UserID     int32  `json:"userId"`
+	UserID     int64  `json:"userId"`
 	RoleID     int32  `json:"roleId"`
-	AssignedBy *int32 `json:"assignedBy"`
+	AssignedBy *int64 `json:"assignedBy"`
 }
 
 func (q *Queries) GrantRoleToUser(ctx context.Context, arg GrantRoleToUserParams) (UserRole, error) {
@@ -605,29 +473,6 @@ func (q *Queries) GrantRoleToUser(ctx context.Context, arg GrantRoleToUserParams
 	return i, err
 }
 
-const hasPermission = `-- name: HasPermission :one
-SELECT EXISTS(
-  SELECT 1 FROM role_permissions rp
-  JOIN permissions p ON rp.permission_id = p.id
-  WHERE rp.role_id = $1
-    AND p.resource_type = $2
-    AND p.action = $3
-) AS has_permission
-`
-
-type HasPermissionParams struct {
-	RoleID       int32  `json:"roleId"`
-	ResourceType string `json:"resourceType"`
-	Action       string `json:"action"`
-}
-
-func (q *Queries) HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasPermission, arg.RoleID, arg.ResourceType, arg.Action)
-	var has_permission bool
-	err := row.Scan(&has_permission)
-	return has_permission, err
-}
-
 const isUserInRole = `-- name: IsUserInRole :one
 SELECT EXISTS(
   SELECT 1 FROM user_roles
@@ -636,7 +481,7 @@ SELECT EXISTS(
 `
 
 type IsUserInRoleParams struct {
-	UserID int32 `json:"userId"`
+	UserID int64 `json:"userId"`
 	RoleID int32 `json:"roleId"`
 }
 
@@ -647,8 +492,51 @@ func (q *Queries) IsUserInRole(ctx context.Context, arg IsUserInRoleParams) (boo
 	return is_in_role, err
 }
 
+const listAuditLogs = `-- name: ListAuditLogs :many
+SELECT id, user_id, action, resource_type, resource_id, old_value, new_value, reason, ip_address, user_agent, created_at FROM audit_logs
+ORDER BY created_at DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListAuditLogsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAuditLogs, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Action,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.OldValue,
+			&i.NewValue,
+			&i.Reason,
+			&i.IpAddress,
+			&i.UserAgent,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPermissions = `-- name: ListPermissions :many
-SELECT id, resource_type, action, description, created_at FROM permissions ORDER BY resource_type, action ASC
+SELECT id, name, description, category, created_at FROM permissions ORDER BY category, name ASC
 `
 
 func (q *Queries) ListPermissions(ctx context.Context) ([]Permission, error) {
@@ -662,9 +550,9 @@ func (q *Queries) ListPermissions(ctx context.Context) ([]Permission, error) {
 		var i Permission
 		if err := rows.Scan(
 			&i.ID,
-			&i.ResourceType,
-			&i.Action,
+			&i.Name,
 			&i.Description,
+			&i.Category,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -677,12 +565,12 @@ func (q *Queries) ListPermissions(ctx context.Context) ([]Permission, error) {
 	return items, nil
 }
 
-const listPermissionsByResourceType = `-- name: ListPermissionsByResourceType :many
-SELECT id, resource_type, action, description, created_at FROM permissions WHERE resource_type = $1 ORDER BY action ASC
+const listPermissionsByCategory = `-- name: ListPermissionsByCategory :many
+SELECT id, name, description, category, created_at FROM permissions WHERE category = $1 ORDER BY name ASC
 `
 
-func (q *Queries) ListPermissionsByResourceType(ctx context.Context, resourceType string) ([]Permission, error) {
-	rows, err := q.db.Query(ctx, listPermissionsByResourceType, resourceType)
+func (q *Queries) ListPermissionsByCategory(ctx context.Context, category *string) ([]Permission, error) {
+	rows, err := q.db.Query(ctx, listPermissionsByCategory, category)
 	if err != nil {
 		return nil, err
 	}
@@ -692,9 +580,101 @@ func (q *Queries) ListPermissionsByResourceType(ctx context.Context, resourceTyp
 		var i Permission
 		if err := rows.Scan(
 			&i.ID,
-			&i.ResourceType,
-			&i.Action,
+			&i.Name,
 			&i.Description,
+			&i.Category,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listResourceAuditLogs = `-- name: ListResourceAuditLogs :many
+SELECT id, user_id, action, resource_type, resource_id, old_value, new_value, reason, ip_address, user_agent, created_at FROM audit_logs
+WHERE resource_type = $1 AND resource_id = $2
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListResourceAuditLogsParams struct {
+	ResourceType *string `json:"resourceType"`
+	ResourceID   *int64  `json:"resourceId"`
+	Limit        int32   `json:"limit"`
+	Offset       int32   `json:"offset"`
+}
+
+func (q *Queries) ListResourceAuditLogs(ctx context.Context, arg ListResourceAuditLogsParams) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listResourceAuditLogs,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Action,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.OldValue,
+			&i.NewValue,
+			&i.Reason,
+			&i.IpAddress,
+			&i.UserAgent,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listResourcePermissionGrants = `-- name: ListResourcePermissionGrants :many
+SELECT id, user_id, resource_type, resource_id, permission, granted_at, granted_by, expires_at, created_at FROM permission_grants
+WHERE resource_type = $1 AND resource_id = $2
+ORDER BY user_id, permission
+`
+
+type ListResourcePermissionGrantsParams struct {
+	ResourceType string `json:"resourceType"`
+	ResourceID   int64  `json:"resourceId"`
+}
+
+func (q *Queries) ListResourcePermissionGrants(ctx context.Context, arg ListResourcePermissionGrantsParams) ([]PermissionGrant, error) {
+	rows, err := q.db.Query(ctx, listResourcePermissionGrants, arg.ResourceType, arg.ResourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PermissionGrant{}
+	for rows.Next() {
+		var i PermissionGrant
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.Permission,
+			&i.GrantedAt,
+			&i.GrantedBy,
+			&i.ExpiresAt,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -708,7 +688,7 @@ func (q *Queries) ListPermissionsByResourceType(ctx context.Context, resourceTyp
 }
 
 const listRoles = `-- name: ListRoles :many
-SELECT id, name, description, is_extensible, created_at, updated_at FROM roles ORDER BY id ASC
+SELECT id, name, description, is_system, created_at FROM roles ORDER BY name ASC
 `
 
 func (q *Queries) ListRoles(ctx context.Context) ([]Role, error) {
@@ -724,9 +704,8 @@ func (q *Queries) ListRoles(ctx context.Context) ([]Role, error) {
 			&i.ID,
 			&i.Name,
 			&i.Description,
-			&i.IsExtensible,
+			&i.IsSystem,
 			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -738,18 +717,105 @@ func (q *Queries) ListRoles(ctx context.Context) ([]Role, error) {
 	return items, nil
 }
 
-const revokeAllResourceAccess = `-- name: RevokeAllResourceAccess :exec
-DELETE FROM resource_access_control
+const listUserAuditLogs = `-- name: ListUserAuditLogs :many
+SELECT id, user_id, action, resource_type, resource_id, old_value, new_value, reason, ip_address, user_agent, created_at FROM audit_logs
+WHERE user_id = $1 OR old_value->>'user_id' = $2::text OR new_value->>'user_id' = $2::text
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListUserAuditLogsParams struct {
+	UserID  *int64 `json:"userId"`
+	Column2 string `json:"column2"`
+	Limit   int32  `json:"limit"`
+	Offset  int32  `json:"offset"`
+}
+
+func (q *Queries) ListUserAuditLogs(ctx context.Context, arg ListUserAuditLogsParams) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listUserAuditLogs,
+		arg.UserID,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Action,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.OldValue,
+			&i.NewValue,
+			&i.Reason,
+			&i.IpAddress,
+			&i.UserAgent,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserPermissionGrants = `-- name: ListUserPermissionGrants :many
+SELECT id, user_id, resource_type, resource_id, permission, granted_at, granted_by, expires_at, created_at FROM permission_grants
+WHERE user_id = $1
+ORDER BY resource_type, resource_id, permission
+`
+
+func (q *Queries) ListUserPermissionGrants(ctx context.Context, userID int64) ([]PermissionGrant, error) {
+	rows, err := q.db.Query(ctx, listUserPermissionGrants, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PermissionGrant{}
+	for rows.Next() {
+		var i PermissionGrant
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.Permission,
+			&i.GrantedAt,
+			&i.GrantedBy,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revokeAllResourcePermissionGrants = `-- name: RevokeAllResourcePermissionGrants :exec
+DELETE FROM permission_grants
 WHERE resource_type = $1 AND resource_id = $2
 `
 
-type RevokeAllResourceAccessParams struct {
+type RevokeAllResourcePermissionGrantsParams struct {
 	ResourceType string `json:"resourceType"`
 	ResourceID   int64  `json:"resourceId"`
 }
 
-func (q *Queries) RevokeAllResourceAccess(ctx context.Context, arg RevokeAllResourceAccessParams) error {
-	_, err := q.db.Exec(ctx, revokeAllResourceAccess, arg.ResourceType, arg.ResourceID)
+func (q *Queries) RevokeAllResourcePermissionGrants(ctx context.Context, arg RevokeAllResourcePermissionGrantsParams) error {
+	_, err := q.db.Exec(ctx, revokeAllResourcePermissionGrants, arg.ResourceType, arg.ResourceID)
 	return err
 }
 
@@ -767,19 +833,25 @@ func (q *Queries) RevokePermissionFromRole(ctx context.Context, arg RevokePermis
 	return err
 }
 
-const revokeResourceAccess = `-- name: RevokeResourceAccess :exec
-DELETE FROM resource_access_control
-WHERE resource_type = $1 AND resource_id = $2 AND user_id = $3
+const revokePermissionGrant = `-- name: RevokePermissionGrant :exec
+DELETE FROM permission_grants
+WHERE user_id = $1 AND resource_type = $2 AND resource_id = $3 AND permission = $4
 `
 
-type RevokeResourceAccessParams struct {
+type RevokePermissionGrantParams struct {
+	UserID       int64  `json:"userId"`
 	ResourceType string `json:"resourceType"`
 	ResourceID   int64  `json:"resourceId"`
-	UserID       int32  `json:"userId"`
+	Permission   string `json:"permission"`
 }
 
-func (q *Queries) RevokeResourceAccess(ctx context.Context, arg RevokeResourceAccessParams) error {
-	_, err := q.db.Exec(ctx, revokeResourceAccess, arg.ResourceType, arg.ResourceID, arg.UserID)
+func (q *Queries) RevokePermissionGrant(ctx context.Context, arg RevokePermissionGrantParams) error {
+	_, err := q.db.Exec(ctx, revokePermissionGrant,
+		arg.UserID,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Permission,
+	)
 	return err
 }
 
@@ -788,7 +860,7 @@ DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2
 `
 
 type RevokeRoleFromUserParams struct {
-	UserID int32 `json:"userId"`
+	UserID int64 `json:"userId"`
 	RoleID int32 `json:"roleId"`
 }
 
@@ -797,37 +869,67 @@ func (q *Queries) RevokeRoleFromUser(ctx context.Context, arg RevokeRoleFromUser
 	return err
 }
 
+const roleHasPermission = `-- name: RoleHasPermission :one
+SELECT EXISTS(
+  SELECT 1 FROM role_permissions rp
+  JOIN permissions p ON rp.permission_id = p.id
+  WHERE rp.role_id = $1 AND p.name = $2
+) AS has_permission
+`
+
+type RoleHasPermissionParams struct {
+	RoleID int32  `json:"roleId"`
+	Name   string `json:"name"`
+}
+
+func (q *Queries) RoleHasPermission(ctx context.Context, arg RoleHasPermissionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, roleHasPermission, arg.RoleID, arg.Name)
+	var has_permission bool
+	err := row.Scan(&has_permission)
+	return has_permission, err
+}
+
 const updateRole = `-- name: UpdateRole :one
-UPDATE roles SET name = COALESCE($2, name),
-                 description = COALESCE($3, description),
-                 is_extensible = COALESCE($4, is_extensible),
-                 updated_at = CURRENT_TIMESTAMP
+UPDATE roles SET description = COALESCE($2, description)
 WHERE id = $1
-RETURNING id, name, description, is_extensible, created_at, updated_at
+RETURNING id, name, description, is_system, created_at
 `
 
 type UpdateRoleParams struct {
-	ID           int32   `json:"id"`
-	Name         *string `json:"name"`
-	Description  *string `json:"description"`
-	IsExtensible *bool   `json:"isExtensible"`
+	ID          int32   `json:"id"`
+	Description *string `json:"description"`
 }
 
 func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (Role, error) {
-	row := q.db.QueryRow(ctx, updateRole,
-		arg.ID,
-		arg.Name,
-		arg.Description,
-		arg.IsExtensible,
-	)
+	row := q.db.QueryRow(ctx, updateRole, arg.ID, arg.Description)
 	var i Role
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Description,
-		&i.IsExtensible,
+		&i.IsSystem,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const userHasPermission = `-- name: UserHasPermission :one
+SELECT EXISTS(
+  SELECT 1 FROM user_roles ur
+  JOIN role_permissions rp ON ur.role_id = rp.role_id
+  JOIN permissions p ON rp.permission_id = p.id
+  WHERE ur.user_id = $1 AND p.name = $2
+) AS has_permission
+`
+
+type UserHasPermissionParams struct {
+	UserID int64  `json:"userId"`
+	Name   string `json:"name"`
+}
+
+func (q *Queries) UserHasPermission(ctx context.Context, arg UserHasPermissionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, userHasPermission, arg.UserID, arg.Name)
+	var has_permission bool
+	err := row.Scan(&has_permission)
+	return has_permission, err
 }
