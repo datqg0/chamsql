@@ -70,6 +70,10 @@ func (c *ExamEventConsumer) handleMessage(ctx context.Context, msg kafka.Message
 		c.handleExamSubmitted(ctx, &envelope)
 	case exam_domain.EventTypeExamFinished:
 		c.handleExamFinished(ctx, &envelope)
+	case exam_domain.EventTypeExamTimeExpired:
+		c.handleExamTimeExpired(ctx, &envelope)
+	case exam_domain.EventTypeExamTimeExtended:
+		c.handleExamTimeExtended(ctx, &envelope)
 	default:
 		logger.Warn("Unknown Exam event type: %s", envelope.EventType)
 	}
@@ -132,6 +136,63 @@ func (c *ExamEventConsumer) handleExamFinished(ctx context.Context, envelope *me
 	// - Send result notifications
 	// - Update user statistics
 	// - Trigger grading workflows
+}
+
+func (c *ExamEventConsumer) handleExamTimeExpired(ctx context.Context, envelope *messaging.EventEnvelope) {
+	var payload exam_domain.ExamEventPayload
+	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
+		logger.Error("Failed to unmarshal ExamTimeExpired payload: %v", err)
+		return
+	}
+
+	logger.Info("Exam time expired event: examID=%d, endTime=%v", payload.ExamID, payload.EndTime)
+
+	// Update exam status to "completed" to lock it
+	pool := c.database.GetPool()
+	result, err := pool.Exec(
+		ctx,
+		"UPDATE exams SET status = 'completed', updated_at = NOW() WHERE id = $1 AND status != 'completed'",
+		payload.ExamID,
+	)
+	if err != nil {
+		logger.Error("Failed to mark exam as completed: examID=%d, error=%v", payload.ExamID, err)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected > 0 {
+		logger.Info("Exam marked as completed: examID=%d", payload.ExamID)
+	}
+
+	// TODO: Additional side effects
+	// - Auto-submit incomplete participants
+	// - Send notifications to students
+	// - Update statistics
+}
+
+func (c *ExamEventConsumer) handleExamTimeExtended(ctx context.Context, envelope *messaging.EventEnvelope) {
+	var payload exam_domain.ExamEventPayload
+	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
+		logger.Error("Failed to unmarshal ExamTimeExtended payload: %v", err)
+		return
+	}
+
+	logger.Info("Exam time extended event: examID=%d, newEndTime=%v", payload.ExamID, payload.EndTime)
+
+	// Update exam end_time
+	pool := c.database.GetPool()
+	_, err := pool.Exec(
+		ctx,
+		"UPDATE exams SET end_time = $2, updated_at = NOW() WHERE id = $1",
+		payload.ExamID,
+		payload.EndTime,
+	)
+	if err != nil {
+		logger.Error("Failed to extend exam time: examID=%d, error=%v", payload.ExamID, err)
+		return
+	}
+
+	logger.Info("Exam time extended: examID=%d, newEndTime=%v", payload.ExamID, payload.EndTime)
 }
 
 // isAlreadyProcessed checks if an event has already been processed (idempotency)
