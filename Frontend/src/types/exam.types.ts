@@ -209,6 +209,7 @@ export interface MyExam {
     finishedAt?: string
     score?: number
     totalPoints?: number
+    attemptNumber?: number
 }
 
 // Admin Types

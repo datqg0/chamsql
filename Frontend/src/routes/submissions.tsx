@@ -15,8 +15,9 @@ import {
     Timer,
     Trophy,
     AlertCircle,
+    RotateCw,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
@@ -24,6 +25,13 @@ import remarkGfm from 'remark-gfm'
 
 import { SQLEditor } from '@/components/editor/sql-editor'
 import { ExamImportDialog } from '@/components/exam/exam-import-dialog'
+import { ExamTimer } from '@/components/exam/exam-timer'
+import { ExamNavigation } from '@/components/exam/exam-navigation'
+import { ProblemHeader } from '@/components/exam/problem-header'
+import { ExamAutoSubmitModal } from '@/components/exam/exam-auto-submit-modal'
+import { ExamResultsOverview } from '@/components/exam/exam-results-overview'
+import { ProblemResultDetail } from '@/components/exam/problem-result-detail'
+import { RetakeModal } from '@/components/exam/retake-modal'
 import { MainLayout } from '@/components/layouts/main-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -36,11 +44,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSQLChecker } from '@/hooks/use-sql-checker'
 import { useWebSocket } from '@/hooks/use-websocket'
-import { cn } from '@/lib/utils'
 import { examsService } from '@/services/exams.service'
 import { submissionsService } from '@/services/submissions.service'
+import { examSubmissionService } from '@/services/exam-submission.service'
 import { useAuthStore } from '@/stores/use-auth-store'
 import type { MyExam, Exam, Submission } from '@/types/exam.types'
+import type { ProblemSubmissionResult } from '@/types/exam-submission.types'
 
 function SubmissionsPage() {
     const navigate = useNavigate()
@@ -70,6 +79,15 @@ function SubmissionsPage() {
     const [result, setResult] = useState<any>(null)
     const [mobileView, setMobileView] = useState<'problem' | 'editor'>('problem')
     const [answers, setAnswers] = useState<Record<number, string>>({})
+    const [solvedProblems, setSolvedProblems] = useState<Record<number, ProblemSubmissionResult>>({})
+    
+    // Timer & Modal states
+    const [examEndTimeMs, setExamEndTimeMs] = useState<number | null>(null)
+    const [showAutoSubmitModal, setShowAutoSubmitModal] = useState(false)
+    const [isAutoSubmitMode, setIsAutoSubmitMode] = useState(false)
+    const [isFinalizingSubmit, setIsFinalizingSubmit] = useState(false)
+    const [showRetakeModal, setShowRetakeModal] = useState(false)
+    const [isRetakingExam, setIsRetakingExam] = useState(false)
 
     const { isValid, syntaxError } = useSQLChecker(sqlQuery, {
         debounceMs: 300,
@@ -162,14 +180,30 @@ function SubmissionsPage() {
         }
 
         try {
-            await examsService.start(myExam.exam.id)
+            // Start exam
+            await examSubmissionService.startExam(myExam.exam.id)
+            
+            // Get time remaining
+            const timeResponse = await examSubmissionService.getTimeRemaining(myExam.exam.id)
+            
+            // Set timer end time (current time + remaining ms)
+            const endTime = Date.now() + timeResponse.timeRemainingMs
+            setExamEndTimeMs(endTime)
+            
+            // Load exam problems
+            const problemsResponse = await examSubmissionService.getExamWithProblems(myExam.exam.id)
+            
             setSelectedExam(myExam)
-            setExamProblems(myExam.exam.problems || [])
+            setExamProblems(problemsResponse.problems || [])
             setCurrentProblemIndex(0)
             setSqlQuery('')
             setResult(null)
             setAnswers({})
+            setSolvedProblems({})
+            
+            toast.success('Đã bắt đầu bài thi!')
         } catch (error: any) {
+            console.error('Error starting exam:', error)
             toast.error(error?.message || 'Không thể bắt đầu bài thi')
         }
     }
@@ -180,6 +214,9 @@ function SubmissionsPage() {
         setCurrentProblemIndex(0)
         setSqlQuery('')
         setResult(null)
+        setExamEndTimeMs(null)
+        setAnswers({})
+        setSolvedProblems({})
         loadMyExams() // Refresh list
     }
 
@@ -226,11 +263,21 @@ function SubmissionsPage() {
         setIsSubmitting(true)
 
         try {
-            await examsService.submitAnswer(selectedExam.exam.id, {
-                problemId: currentProblem.problemId || currentProblem.problem?.id,
-                code: sqlQuery,
-                databaseType: selectedExam.exam.allowedDatabases?.[0] || 'postgresql',
-            })
+            const problemId = currentProblem.problemId || currentProblem.problem?.id || currentProblem.id
+            const submitResult = await examSubmissionService.submitProblemCode(
+                selectedExam.exam.id,
+                problemId,
+                {
+                    code: sqlQuery,
+                    language: 'sql',
+                }
+            )
+
+            // Save submission result
+            setSolvedProblems((prev) => ({
+                ...prev,
+                [currentProblem.id]: submitResult,
+            }))
 
             // Save answer locally
             setAnswers((prev) => ({
@@ -238,7 +285,12 @@ function SubmissionsPage() {
                 [currentProblem.id]: sqlQuery,
             }))
 
-            toast.success('Đã lưu câu trả lời!')
+            // Show result feedback
+            if (submitResult.status === 'accepted') {
+                toast.success(`✓ Câu trả lời chính xác! (+${submitResult.score} điểm)`)
+            } else {
+                toast.error('✗ Câu trả lời chưa chính xác. Hãy thử lại!')
+            }
 
             // Move to next problem if available
             if (currentProblemIndex < examProblems.length - 1) {
@@ -247,23 +299,72 @@ function SubmissionsPage() {
                 setResult(null)
             }
         } catch (error: any) {
+            console.error('Error submitting answer:', error)
             toast.error(error?.message || 'Không thể lưu câu trả lời')
         } finally {
             setIsSubmitting(false)
         }
     }
 
-    const handleFinishExam = async () => {
+    const handleTimeExpired = useCallback(() => {
+        setIsAutoSubmitMode(true)
+        setShowAutoSubmitModal(true)
+        toast.error('Hết giờ làm bài! Bài làm sẽ được tự động nộp.')
+    }, [])
+
+    const handleFinishExamClick = () => {
+        setIsAutoSubmitMode(false)
+        setShowAutoSubmitModal(true)
+    }
+
+    const handleConfirmSubmit = async () => {
         if (!selectedExam) return
 
+        setIsFinalizingSubmit(true)
+
         try {
-            await examsService.finish(selectedExam.exam.id)
+            await examSubmissionService.finishExam(selectedExam.exam.id)
             toast.success('Đã nộp bài thành công!')
-            toast.success('Đã nộp bài thành công!')
+            setShowAutoSubmitModal(false)
             handleBackToList()
-            loadSubmissionHistory() // Refresh history after finish
+            await loadSubmissionHistory() // Refresh history after finish
         } catch (error: any) {
+            console.error('Error finishing exam:', error)
             toast.error(error?.message || 'Không thể nộp bài')
+        } finally {
+            setIsFinalizingSubmit(false)
+        }
+    }
+
+    const handleRetakeExam = () => {
+        setShowRetakeModal(true)
+    }
+
+    const handleConfirmRetake = async () => {
+        if (!selectedExam) return
+
+        setIsRetakingExam(true)
+
+        try {
+            // Reset exam state
+            setSelectedExam(null)
+            setExamProblems([])
+            setCurrentProblemIndex(0)
+            setSqlQuery('')
+            setResult(null)
+            setExamEndTimeMs(null)
+            setAnswers({})
+            setSolvedProblems({})
+            setShowRetakeModal(false)
+            
+            // Start new attempt
+            await handleStartExam(selectedExam)
+            toast.success('Bắt đầu lần thi mới!')
+        } catch (error: any) {
+            console.error('Error retaking exam:', error)
+            toast.error(error?.message || 'Không thể bắt đầu lại bài thi')
+        } finally {
+            setIsRetakingExam(false)
         }
     }
 
@@ -290,8 +391,17 @@ function SubmissionsPage() {
         return (
             <MainLayout>
                 <div className="h-[calc(100vh-120px)] flex flex-col">
+                    {/* Timer Header */}
+                    {examEndTimeMs && (
+                        <ExamTimer 
+                            endTimeMs={examEndTimeMs}
+                            onTimeExpired={handleTimeExpired}
+                            examTitle={selectedExam.exam.title}
+                        />
+                    )}
+
                     {/* Header */}
-                    <div className="flex items-center gap-4 mb-4">
+                    <div className="flex items-center gap-4 mb-4 px-4 py-3">
                         <Button variant="ghost" size="sm" onClick={handleBackToList}>
                             <ArrowLeft className="h-4 w-4 mr-1" />
                             Thoát
@@ -302,159 +412,166 @@ function SubmissionsPage() {
                                 Thời gian: {selectedExam.exam.durationMinutes} phút
                             </p>
                         </div>
-                        <Button onClick={handleFinishExam}>
+                        <Button 
+                            onClick={handleFinishExamClick}
+                            variant="default"
+                        >
                             <CheckCircle2 className="h-4 w-4 mr-2" />
                             Nộp bài
                         </Button>
                     </div>
 
-                    {/* Problem Navigation */}
-                    {examProblems.length > 0 && (
-                        <div className="flex gap-2 mb-4 flex-wrap">
-                            {examProblems.map((problem, index) => (
-                                <Button
-                                    key={problem.id}
-                                    variant={currentProblemIndex === index ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => handleProblemSelect(index)}
-                                    className={cn(
-                                        answers[problem.id] && 'ring-2 ring-green-500'
-                                    )}
-                                >
-                                    Câu {index + 1}
-                                </Button>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Mobile View Toggle */}
-                    <div className="lg:hidden flex gap-2 mb-4">
-                        <Button
-                            variant={mobileView === 'problem' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setMobileView('problem')}
-                            className="flex-1"
-                        >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Đề bài
-                        </Button>
-                        <Button
-                            variant={mobileView === 'editor' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setMobileView('editor')}
-                            className="flex-1"
-                        >
-                            <Code className="h-4 w-4 mr-2" />
-                            Viết code
-                        </Button>
-                    </div>
-
                     {/* Desktop Layout */}
-                    <div className="hidden lg:block flex-1">
-                        <ResizablePanelGroup direction="horizontal" className="h-full rounded-lg border">
-                            {/* Problem Description */}
-                            <ResizablePanel defaultSize={50} minSize={30}>
-                                <Card className="h-full flex flex-col overflow-hidden rounded-none border-0">
-                                    <CardHeader className="pb-2">
-                                        <CardTitle className="text-base flex items-center justify-between">
-                                            {currentProblem?.problem?.title || `Câu ${currentProblemIndex + 1}`}
-                                            <Badge variant="outline">{currentProblem?.points || 0} điểm</Badge>
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="flex-1 overflow-y-auto">
-                                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                {currentProblem?.problem?.description || 'Không có mô tả'}
-                                            </ReactMarkdown>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </ResizablePanel>
+                    <div className="hidden lg:flex flex-1 gap-4 px-4 overflow-hidden">
+                        {/* Problem Navigation Sidebar */}
+                        <ExamNavigation 
+                            problems={examProblems}
+                            currentProblemIndex={currentProblemIndex}
+                            solvedProblems={solvedProblems}
+                            onSelectProblem={handleProblemSelect}
+                        />
 
-                            <ResizableHandle withHandle />
-
-                            {/* SQL Editor */}
-                            <ResizablePanel defaultSize={50} minSize={30}>
-                                <Card className="h-full flex flex-col overflow-hidden rounded-none border-0">
-                                    <CardHeader className="pb-2">
-                                        <CardTitle className="text-base flex items-center gap-2">
-                                            <Code className="h-4 w-4" />
-                                            Viết câu truy vấn
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="flex-1 flex flex-col gap-4 overflow-y-auto">
-                                        <div className="min-h-[300px]">
-                                            <SQLEditor
-                                                value={sqlQuery}
-                                                onChange={(v) => setSqlQuery(v || '')}
-                                                height="300px"
-                                                syntaxError={syntaxError}
-                                            />
-                                        </div>
-
-                                        {!isValid && syntaxError && (
-                                            <div className="p-2 bg-red-500/10 text-red-600 rounded text-xs">
-                                                {syntaxError.message}
+                        {/* Main Content */}
+                        <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+                            <ResizablePanelGroup direction="horizontal" className="h-full rounded-lg border">
+                                {/* Problem Description */}
+                                <ResizablePanel defaultSize={50} minSize={30}>
+                                    <Card className="h-full flex flex-col overflow-hidden rounded-none border-0">
+                                        <ProblemHeader 
+                                            problem={currentProblem?.problem}
+                                            problemIndex={currentProblemIndex + 1}
+                                            totalProblems={examProblems.length}
+                                            points={currentProblem?.points || 0}
+                                            submissionResult={solvedProblems[currentProblem?.id]}
+                                            onPrevious={() => handleProblemSelect(Math.max(0, currentProblemIndex - 1))}
+                                            onNext={() => handleProblemSelect(Math.min(examProblems.length - 1, currentProblemIndex + 1))}
+                                            canGoBack={currentProblemIndex > 0}
+                                            canGoNext={currentProblemIndex < examProblems.length - 1}
+                                        />
+                                        <CardContent className="flex-1 overflow-y-auto py-4">
+                                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                                                <ReactMarkdown 
+                                                    remarkPlugins={[remarkGfm]}
+                                                    rehypePlugins={[rehypeRaw]}
+                                                >
+                                                    {currentProblem?.problem?.description || 'Không có mô tả'}
+                                                </ReactMarkdown>
                                             </div>
-                                        )}
+                                        </CardContent>
+                                    </Card>
+                                </ResizablePanel>
 
-                                        {result && (
-                                            <div className="p-3 bg-muted rounded text-sm">
-                                                <p className="font-medium mb-2">Kết quả:</p>
-                                                {result.success ? (
-                                                    <pre className="text-xs overflow-x-auto">
-                                                        {JSON.stringify(result.data, null, 2)}
-                                                    </pre>
-                                                ) : (
-                                                    <p className="text-red-500">{result.error}</p>
-                                                )}
+                                <ResizableHandle withHandle />
+
+                                {/* SQL Editor */}
+                                <ResizablePanel defaultSize={50} minSize={30}>
+                                    <Card className="h-full flex flex-col overflow-hidden rounded-none border-0">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-base flex items-center gap-2">
+                                                <Code className="h-4 w-4" />
+                                                Viết câu truy vấn
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="flex-1 flex flex-col gap-4 overflow-y-auto">
+                                            <div className="min-h-[300px]">
+                                                <SQLEditor
+                                                    value={sqlQuery}
+                                                    onChange={(v) => setSqlQuery(v || '')}
+                                                    height="300px"
+                                                    syntaxError={syntaxError}
+                                                />
                                             </div>
-                                        )}
 
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                onClick={handleRunTest}
-                                                disabled={isRunning || isSubmitting}
-                                                className="flex-1"
-                                            >
-                                                {isRunning ? (
-                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                ) : (
-                                                    <Play className="h-4 w-4 mr-2" />
-                                                )}
-                                                Chạy thử
-                                            </Button>
-                                            <Button
-                                                onClick={handleSubmitAnswer}
-                                                disabled={isRunning || isSubmitting || !isValid}
-                                                className="flex-1"
-                                            >
-                                                {isSubmitting ? (
-                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                ) : (
-                                                    <Send className="h-4 w-4 mr-2" />
-                                                )}
-                                                Lưu câu trả lời
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </ResizablePanel>
-                        </ResizablePanelGroup>
+                                            {!isValid && syntaxError && (
+                                                <div className="p-2 bg-red-500/10 text-red-600 rounded text-xs">
+                                                    {syntaxError.message}
+                                                </div>
+                                            )}
+
+                                            {result && (
+                                                <div className="p-3 bg-muted rounded text-sm">
+                                                    <p className="font-medium mb-2">Kết quả:</p>
+                                                    {result.success ? (
+                                                        <pre className="text-xs overflow-x-auto">
+                                                            {JSON.stringify(result.data, null, 2)}
+                                                        </pre>
+                                                    ) : (
+                                                        <p className="text-red-500">{result.error}</p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={handleRunTest}
+                                                    disabled={isRunning || isSubmitting}
+                                                    className="flex-1"
+                                                >
+                                                    {isRunning ? (
+                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    ) : (
+                                                        <Play className="h-4 w-4 mr-2" />
+                                                    )}
+                                                    Chạy thử
+                                                </Button>
+                                                <Button
+                                                    onClick={handleSubmitAnswer}
+                                                    disabled={isRunning || isSubmitting || !isValid}
+                                                    className="flex-1"
+                                                >
+                                                    {isSubmitting ? (
+                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    ) : (
+                                                        <Send className="h-4 w-4 mr-2" />
+                                                    )}
+                                                    Lưu câu trả lời
+                                                </Button>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </ResizablePanel>
+                            </ResizablePanelGroup>
+                        </div>
                     </div>
 
                     {/* Mobile Layout */}
-                    <div className="lg:hidden flex-1 overflow-hidden">
+                    <div className="lg:hidden flex-1 overflow-hidden px-4">
+                        <div className="flex gap-2 mb-4">
+                            <Button
+                                variant={mobileView === 'problem' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setMobileView('problem')}
+                                className="flex-1"
+                            >
+                                <FileText className="h-4 w-4 mr-2" />
+                                Đề bài
+                            </Button>
+                            <Button
+                                variant={mobileView === 'editor' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setMobileView('editor')}
+                                className="flex-1"
+                            >
+                                <Code className="h-4 w-4 mr-2" />
+                                Viết code
+                            </Button>
+                        </div>
+
                         {mobileView === 'problem' ? (
                             <Card className="h-full flex flex-col overflow-hidden">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-base flex items-center justify-between">
-                                        {currentProblem?.problem?.title || `Câu ${currentProblemIndex + 1}`}
-                                        <Badge variant="outline">{currentProblem?.points || 0} điểm</Badge>
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="flex-1 overflow-y-auto">
+                                <ProblemHeader 
+                                    problem={currentProblem?.problem}
+                                    problemIndex={currentProblemIndex + 1}
+                                    totalProblems={examProblems.length}
+                                    points={currentProblem?.points || 0}
+                                    submissionResult={solvedProblems[currentProblem?.id]}
+                                    onPrevious={() => handleProblemSelect(Math.max(0, currentProblemIndex - 1))}
+                                    onNext={() => handleProblemSelect(Math.min(examProblems.length - 1, currentProblemIndex + 1))}
+                                    canGoBack={currentProblemIndex > 0}
+                                    canGoNext={currentProblemIndex < examProblems.length - 1}
+                                />
+                                <CardContent className="flex-1 overflow-y-auto py-4">
                                     <div className="prose prose-sm dark:prose-invert max-w-none">
                                         <ReactMarkdown
                                             remarkPlugins={[remarkGfm]}
@@ -505,98 +622,120 @@ function SubmissionsPage() {
                         )}
                     </div>
                 </div>
+
+                {/* Auto-Submit Modal */}
+                <ExamAutoSubmitModal 
+                    open={showAutoSubmitModal}
+                    onConfirm={handleConfirmSubmit}
+                    onCancel={() => setShowAutoSubmitModal(false)}
+                    examTitle={selectedExam.exam.title}
+                    type={isAutoSubmitMode ? 'auto-submit' : 'manual-submit'}
+                    isSubmitting={isFinalizingSubmit}
+                />
             </MainLayout>
         )
     }
 
     // View Result View (for finished exams)
     if (selectedExam && selectedExam.status === 'finished') {
+        const remainingAttempts = (selectedExam.exam.maxAttempts || 1) - (selectedExam.attemptNumber || 1)
+        const canRetake = remainingAttempts > 0
+
         return (
             <MainLayout>
-                <div className="space-y-6">
-                    <div className="flex items-center gap-4">
-                        <Button variant="ghost" size="sm" onClick={handleBackToList}>
+                <div className="space-y-6 px-4 py-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                                <h1 className="text-3xl font-bold">{selectedExam.exam.title}</h1>
+                                <Badge variant="secondary">Kết quả bài thi</Badge>
+                            </div>
+                            <p className="text-muted-foreground">
+                                Lần thi thứ {selectedExam.attemptNumber || 1} / {selectedExam.exam.maxAttempts || 1}
+                            </p>
+                        </div>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={handleBackToList}
+                        >
                             <ArrowLeft className="h-4 w-4 mr-1" />
                             Quay lại
                         </Button>
-                        <div className="flex-1">
-                            <h1 className="text-2xl font-bold">{selectedExam.exam.title}</h1>
-                            <p className="text-muted-foreground">Kết quả bài thi</p>
+                    </div>
+
+                    {/* Results Overview */}
+                    <ExamResultsOverview 
+                        totalScore={selectedExam.score || 0}
+                        maxScore={selectedExam.totalPoints || 0}
+                        submittedAt={selectedExam.finishedAt}
+                        attemptNumber={selectedExam.attemptNumber || 1}
+                    />
+
+                    {/* Retake Button */}
+                    {canRetake && (
+                        <div className="flex gap-2">
+                            <Button 
+                                onClick={handleRetakeExam}
+                                variant="default"
+                                className="gap-2"
+                            >
+                                <RotateCw className="h-4 w-4" />
+                                Làm lại ({remainingAttempts} lần còn lại)
+                            </Button>
                         </div>
-                    </div>
+                    )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="flex items-center gap-3">
-                                    <Trophy className="h-8 w-8 text-yellow-500" />
-                                    <div>
-                                        <p className="text-3xl font-bold">
-                                            {selectedExam.score ?? 0}/{selectedExam.totalPoints ?? 0}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">Điểm số</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="flex items-center gap-3">
-                                    <CheckCircle2 className="h-8 w-8 text-green-500" />
-                                    <div>
-                                        <p className="text-3xl font-bold">
-                                            {selectedExam.totalPoints
-                                                ? Math.round((selectedExam.score! / selectedExam.totalPoints) * 100)
-                                                : 0}%
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">Tỷ lệ đúng</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="flex items-center gap-3">
-                                    <Clock className="h-8 w-8 text-blue-500" />
-                                    <div>
-                                        <p className="text-lg font-bold">
-                                            {selectedExam.finishedAt ? formatDate(selectedExam.finishedAt) : 'N/A'}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">Thời gian nộp</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Chi tiết bài làm</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {examProblems.length === 0 ? (
-                                <p className="text-center py-8 text-muted-foreground">
-                                    Không có dữ liệu chi tiết
-                                </p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {examProblems.map((problem, index) => (
-                                        <div key={problem.id} className="border rounded-lg p-4">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <span className="font-medium">
-                                                    {problem.problem?.title || `Câu ${index + 1}`}
-                                                </span>
-                                                <Badge variant="outline">
-                                                    {problem.points || 0} điểm
-                                                </Badge>
+                    {/* Problem Details */}
+                    <div className="space-y-3">
+                        <h2 className="text-xl font-bold">Chi tiết bài làm</h2>
+                        {examProblems.length === 0 ? (
+                            <Card>
+                                <CardContent className="py-8 text-center">
+                                    <p className="text-muted-foreground">Không có dữ liệu chi tiết</p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="space-y-3">
+                                {examProblems.map((problem, index) => {
+                                    const submission = solvedProblems[problem.id]
+                                    return submission ? (
+                                        <ProblemResultDetail
+                                            key={problem.id}
+                                            problemIndex={index + 1}
+                                            problemTitle={problem.problem?.title || problem.title || `Câu ${index + 1}`}
+                                            submission={submission}
+                                        />
+                                    ) : (
+                                        <Card key={problem.id} className="p-4 bg-gray-50 dark:bg-gray-900">
+                                            <div className="flex items-center gap-3">
+                                                <AlertCircle className="h-5 w-5 text-orange-600" />
+                                                <div>
+                                                    <p className="font-medium">Câu {index + 1}: {problem.problem?.title || `Câu ${index + 1}`}</p>
+                                                    <p className="text-sm text-muted-foreground">Không có kết quả</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                                        </Card>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
+
+                {/* Retake Modal */}
+                <RetakeModal 
+                    open={showRetakeModal}
+                    onConfirm={handleConfirmRetake}
+                    onCancel={() => setShowRetakeModal(false)}
+                    examTitle={selectedExam.exam.title}
+                    currentScore={selectedExam.score || 0}
+                    maxScore={selectedExam.totalPoints || 0}
+                    remainingAttempts={remainingAttempts}
+                    maxAttempts={selectedExam.exam.maxAttempts || 1}
+                    isRetaking={isRetakingExam}
+                />
             </MainLayout>
         )
     }
@@ -706,8 +845,6 @@ function SubmissionsPage() {
                             </div>
                         </TabsContent>
 
-
-
                         <TabsContent value="history" className="mt-4">
                             {isLoadingHistory ? (
                                 <div className="flex items-center justify-center py-8">
@@ -760,7 +897,7 @@ function SubmissionsPage() {
                     </Tabs>
                 )}
             </div>
-        </MainLayout >
+        </MainLayout>
     )
 }
 
