@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	// =============================================
+	// CLASS_MEMBERS QUERIES
+	// =============================================
+	AddClassMember(ctx context.Context, arg AddClassMemberParams) (ClassMember, error)
+	// =============================================
 	// EXAM PARTICIPANTS
 	// =============================================
 	AddParticipant(ctx context.Context, arg AddParticipantParams) (ExamParticipant, error)
@@ -19,9 +23,14 @@ type Querier interface {
 	// EXAM PROBLEMS
 	// =============================================
 	AddProblemToExam(ctx context.Context, arg AddProblemToExamParams) (ExamProblem, error)
+	// =============================================
+	// CLASS_EXAMS QUERIES
+	// =============================================
+	AssignExamToClass(ctx context.Context, arg AssignExamToClassParams) (ClassExam, error)
 	CheckPermissionGrant(ctx context.Context, arg CheckPermissionGrantParams) (bool, error)
 	CleanupExpiredPermissionGrants(ctx context.Context) error
 	CleanupExpiredTokens(ctx context.Context) error
+	CountClassMembers(ctx context.Context, classID int64) (int64, error)
 	CountCorrectSubmissions(ctx context.Context, userID int64) (int64, error)
 	CountProblems(ctx context.Context) (int64, error)
 	CountProblemsByDifficulty(ctx context.Context) ([]CountProblemsByDifficultyRow, error)
@@ -34,6 +43,10 @@ type Querier interface {
 	// AUDIT LOG QUERIES
 	// =============================================
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
+	// =============================================
+	// CLASSES QUERIES
+	// =============================================
+	CreateClass(ctx context.Context, arg CreateClassParams) (Class, error)
 	// =============================================
 	// EXAMS
 	// =============================================
@@ -53,8 +66,10 @@ type Querier interface {
 	CreateSubmissionTestResult(ctx context.Context, arg CreateSubmissionTestResultParams) (SubmissionTestResult, error)
 	CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeactivateClass(ctx context.Context, id int64) error
 	DeactivateUser(ctx context.Context, id int64) error
 	DeleteAllProblemTestCases(ctx context.Context, problemID int64) error
+	DeleteClass(ctx context.Context, id int64) error
 	DeleteExam(ctx context.Context, id int64) error
 	DeletePermission(ctx context.Context, id int32) error
 	DeleteProblem(ctx context.Context, id int64) error
@@ -63,6 +78,10 @@ type Querier interface {
 	DeleteTopic(ctx context.Context, id int32) error
 	EmailExists(ctx context.Context, email string) (bool, error)
 	FetchPendingEvents(ctx context.Context, limit int32) ([]FetchPendingEventsRow, error)
+	GetClassByCode(ctx context.Context, code string) (Class, error)
+	GetClassByID(ctx context.Context, id int64) (Class, error)
+	GetClassExamByID(ctx context.Context, id int64) (GetClassExamByIDRow, error)
+	GetClassMember(ctx context.Context, arg GetClassMemberParams) (ClassMember, error)
 	GetExamByID(ctx context.Context, id int64) (GetExamByIDRow, error)
 	// =============================================
 	// STUDENT EXAM EXECUTION (PHASE 4)
@@ -125,6 +144,7 @@ type Querier interface {
 	// ROLE PERMISSIONS QUERIES
 	// =============================================
 	GetRolePermissions(ctx context.Context, roleID int32) ([]Permission, error)
+	GetStudentClasses(ctx context.Context, userID int64) ([]Class, error)
 	GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]ExamSubmission, error)
 	GetSubmissionByID(ctx context.Context, id int64) (GetSubmissionByIDRow, error)
 	GetTopicByID(ctx context.Context, id int32) (Topic, error)
@@ -146,6 +166,9 @@ type Querier interface {
 	IsEventProcessed(ctx context.Context, arg IsEventProcessedParams) (bool, error)
 	IsUserInRole(ctx context.Context, arg IsUserInRoleParams) (bool, error)
 	ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]AuditLog, error)
+	ListClassExams(ctx context.Context, classID int64) ([]ListClassExamsRow, error)
+	ListClassMembers(ctx context.Context, arg ListClassMembersParams) ([]ListClassMembersRow, error)
+	ListClassesByLecturer(ctx context.Context, arg ListClassesByLecturerParams) ([]Class, error)
 	ListExamParticipants(ctx context.Context, examID int64) ([]ListExamParticipantsRow, error)
 	ListExamProblems(ctx context.Context, examID int64) ([]ListExamProblemsRow, error)
 	ListExams(ctx context.Context, arg ListExamsParams) ([]ListExamsRow, error)
@@ -179,6 +202,8 @@ type Querier interface {
 	MarkEventProcessed(ctx context.Context, arg MarkEventProcessedParams) error
 	MarkEventPublished(ctx context.Context, id uuid.UUID) error
 	MarkProblemSolved(ctx context.Context, arg MarkProblemSolvedParams) (UserProgress, error)
+	RemoveClassMember(ctx context.Context, arg RemoveClassMemberParams) error
+	RemoveExamFromClass(ctx context.Context, arg RemoveExamFromClassParams) error
 	RemoveParticipant(ctx context.Context, arg RemoveParticipantParams) error
 	RemoveProblemFromExam(ctx context.Context, arg RemoveProblemFromExamParams) error
 	RevokeAllResourcePermissionGrants(ctx context.Context, arg RevokeAllResourcePermissionGrantsParams) error
@@ -196,6 +221,7 @@ type Querier interface {
 	StartExamParticipant(ctx context.Context, arg StartExamParticipantParams) (ExamParticipant, error)
 	SubmitExam(ctx context.Context, arg SubmitExamParams) (ExamParticipant, error)
 	SubmitExamParticipant(ctx context.Context, arg SubmitExamParticipantParams) (ExamParticipant, error)
+	UpdateClass(ctx context.Context, arg UpdateClassParams) (Class, error)
 	UpdateExam(ctx context.Context, arg UpdateExamParams) (Exam, error)
 	UpdateExamProblemPoints(ctx context.Context, arg UpdateExamProblemPointsParams) (ExamProblem, error)
 	UpdateExamStatus(ctx context.Context, arg UpdateExamStatusParams) (Exam, error)

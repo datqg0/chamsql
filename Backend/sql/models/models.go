@@ -25,6 +25,34 @@ type AuditLog struct {
 	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
 }
 
+type Class struct {
+	ID          int64              `json:"id"`
+	Name        string             `json:"name"`
+	Code        string             `json:"code"`
+	Description *string            `json:"description"`
+	CreatedBy   int64              `json:"createdBy"`
+	Semester    int32              `json:"semester"`
+	Year        int32              `json:"year"`
+	IsActive    *bool              `json:"isActive"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type ClassExam struct {
+	ID         int64              `json:"id"`
+	ClassID    int64              `json:"classId"`
+	ExamID     int64              `json:"examId"`
+	AssignedAt pgtype.Timestamptz `json:"assignedAt"`
+}
+
+type ClassMember struct {
+	ID       int64              `json:"id"`
+	ClassID  int64              `json:"classId"`
+	UserID   int64              `json:"userId"`
+	Role     *string            `json:"role"`
+	JoinedAt pgtype.Timestamptz `json:"joinedAt"`
+}
+
 type Exam struct {
 	ID                    int64              `json:"id"`
 	Title                 string             `json:"title"`
