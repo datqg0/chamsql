@@ -149,8 +149,85 @@ func (gu *gradingUseCase) ViewSubmissionForGrading(ctx context.Context, submissi
 //   - scoring_mode = 'manual' and graded_by IS NULL
 //   - Or any submission with graded_by IS NULL
 func (gu *gradingUseCase) ListUngradedSubmissions(ctx context.Context, examID, lecturerID int64) (*dto.ListUngradedSubmissionsResponse, error) {
-	// NOTE: ListUngradedExamSubmissions query not yet implemented
-	return nil, fmt.Errorf("listing ungraded submissions functionality not yet implemented")
+	rows, err := gu.db.GetPool().Query(ctx, `
+		SELECT
+			es.id,
+			es.user_id,
+			u.full_name,
+			p.title,
+			COALESCE(es.score, 0),
+			COALESCE(ep.points, 10),
+			COALESCE(es.is_correct, false),
+			es.status,
+			es.submitted_at
+		FROM exam_submissions es
+		JOIN exam_problems ep ON ep.id = es.exam_problem_id
+		JOIN problems p ON p.id = ep.problem_id
+		JOIN users u ON u.id = es.user_id
+		WHERE es.exam_id = $1
+		ORDER BY es.submitted_at DESC
+	`, examID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list exam submissions: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]dto.SubmissionGradingResponse, 0)
+	for rows.Next() {
+		var (
+			submissionID int64
+			studentID   int64
+			studentName string
+			problemTitle string
+			score       float64
+			maxPoints   float64
+			isCorrect   bool
+			status      string
+			submittedAt time.Time
+		)
+
+		if err := rows.Scan(
+			&submissionID,
+			&studentID,
+			&studentName,
+			&problemTitle,
+			&score,
+			&maxPoints,
+			&isCorrect,
+			&status,
+			&submittedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan exam submission: %w", err)
+		}
+
+		result = append(result, dto.SubmissionGradingResponse{
+			SubmissionID:  submissionID,
+			StudentID:     studentID,
+			StudentName:   studentName,
+			ProblemTitle:  problemTitle,
+			Score:         score,
+			MaxPoints:     maxPoints,
+			IsCorrect:     isCorrect,
+			ScoringMode:   "automatic",
+			Feedback:      "",
+			ComparisonLog: "",
+			SubmittedAt:   submittedAt.Format(time.RFC3339),
+		})
+
+		_ = status
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed while reading exam submissions: %w", err)
+	}
+
+	return &dto.ListUngradedSubmissionsResponse{
+		Submissions:   result,
+		Total:         int64(len(result)),
+		ExamID:        examID,
+		UngradedCount: int64(len(result)),
+		GradedCount:   0,
+	}, nil
 }
 
 // GetExamGradingStats retrieves grading statistics for an exam
@@ -164,35 +241,55 @@ func (gu *gradingUseCase) ListUngradedSubmissions(ctx context.Context, examID, l
 //   - *dto.ExamGradingStatsResponse: Statistics including graded count, average score, etc.
 //   - error: Returns error if exam not found or database error
 func (gu *gradingUseCase) GetExamGradingStats(ctx context.Context, examID, lecturerID int64) (*dto.ExamGradingStatsResponse, error) {
-	// Verify lecturer owns the exam
-	// TODO: Add permission check
+	var (
+		totalSubmissions int64
+		gradedCount      int64
+		ungradedCount    int64
+		averageScore     *float64
+		maxScore         *float64
+		minScore         *float64
+	)
 
-	stats, err := gu.queries.GetExamGradingStats(ctx, examID)
+	err := gu.db.GetPool().QueryRow(ctx, `
+		SELECT
+			COUNT(*) AS total_submissions,
+			COUNT(CASE WHEN status IN ('accepted', 'wrong_answer', 'error', 'timeout') THEN 1 END) AS graded_count,
+			COUNT(CASE WHEN status IN ('pending', 'running') THEN 1 END) AS ungraded_count,
+			AVG(score) AS avg_score,
+			MAX(score) AS max_score,
+			MIN(score) AS min_score
+		FROM exam_submissions
+		WHERE exam_id = $1
+	`, examID).Scan(
+		&totalSubmissions,
+		&gradedCount,
+		&ungradedCount,
+		&averageScore,
+		&maxScore,
+		&minScore,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get grading stats: %w", err)
 	}
 
 	resp := &dto.ExamGradingStatsResponse{
 		ExamID:           examID,
-		TotalSubmissions: stats.TotalSubmissions,
-		GradedCount:      stats.GradedCount,
-		UngradedCount:    stats.UngradedCount,
+		TotalSubmissions: totalSubmissions,
+		GradedCount:      gradedCount,
+		UngradedCount:    ungradedCount,
 	}
 
-	if resp.TotalSubmissions > 0 {
-		resp.GradingPercentage = float64(resp.GradedCount) / float64(resp.TotalSubmissions) * 100
+	if totalSubmissions > 0 {
+		resp.GradingPercentage = float64(gradedCount) / float64(totalSubmissions) * 100
 	}
-
-	resp.AverageScore = stats.AvgScore
-	if stats.MaxScore != nil {
-		if maxVal, ok := stats.MaxScore.(float64); ok {
-			resp.MaxScore = maxVal
-		}
+	if averageScore != nil {
+		resp.AverageScore = *averageScore
 	}
-	if stats.MinScore != nil {
-		if minVal, ok := stats.MinScore.(float64); ok {
-			resp.MinScore = minVal
-		}
+	if maxScore != nil {
+		resp.MaxScore = *maxScore
+	}
+	if minScore != nil {
+		resp.MinScore = *minScore
 	}
 
 	return resp, nil

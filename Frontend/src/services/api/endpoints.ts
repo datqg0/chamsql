@@ -23,8 +23,10 @@ export const API_ENDPOINTS = {
     exams: {
         list: '/exams',
         create: '/exams',
+        byId: (id: number) => `/exams/${id}`,
         addProblem: (id: number) => `/exams/${id}/problems`,
         addParticipants: (id: number) => `/exams/${id}/participants`,
+        listParticipants: (id: number) => `/exams/${id}/participants`,
         start: (id: number) => `/exams/${id}/start`,
         submit: (id: number) => `/exams/${id}/submit`,
         finish: (id: number) => `/exams/${id}/finish`,
@@ -54,4 +56,3 @@ export const API_ENDPOINTS = {
     },
     health: '/health',
 } as const
-

@@ -2,6 +2,7 @@ package http
 
 import (
 	"strconv"
+	"strings"
 
 	"backend/internals/exam/controller/dto"
 	"backend/internals/exam/usecase"
@@ -179,6 +180,8 @@ func (h *ExamHandler) AddProblem(c *gin.Context) {
 		return
 	}
 
+	userRole, _ := middlewares.GetUserRole(c)
+
 	examID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid exam ID")
@@ -191,7 +194,7 @@ func (h *ExamHandler) AddProblem(c *gin.Context) {
 		return
 	}
 
-	err = h.usecase.AddProblem(c.Request.Context(), userID, examID, &req)
+	err = h.usecase.AddProblem(c.Request.Context(), userID, userRole, examID, &req)
 	if err != nil {
 		handleExamError(c, err)
 		return
@@ -214,10 +217,12 @@ func (h *ExamHandler) RemoveProblem(c *gin.Context) {
 		return
 	}
 
+	userRole, _ := middlewares.GetUserRole(c)
+
 	examID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	problemID, _ := strconv.ParseInt(c.Param("problemId"), 10, 64)
 
-	err := h.usecase.RemoveProblem(c.Request.Context(), userID, examID, problemID)
+	err := h.usecase.RemoveProblem(c.Request.Context(), userID, userRole, examID, problemID)
 	if err != nil {
 		handleExamError(c, err)
 		return
@@ -265,6 +270,8 @@ func (h *ExamHandler) AddParticipants(c *gin.Context) {
 		return
 	}
 
+	userRole, _ := middlewares.GetUserRole(c)
+
 	examID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 
 	var req dto.AddParticipantsRequest
@@ -273,7 +280,7 @@ func (h *ExamHandler) AddParticipants(c *gin.Context) {
 		return
 	}
 
-	err := h.usecase.AddParticipants(c.Request.Context(), userID, examID, &req)
+	err := h.usecase.AddParticipants(c.Request.Context(), userID, userRole, examID, &req)
 	if err != nil {
 		handleExamError(c, err)
 		return
@@ -295,9 +302,11 @@ func (h *ExamHandler) ListParticipants(c *gin.Context) {
 		return
 	}
 
+	userRole, _ := middlewares.GetUserRole(c)
+
 	examID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 
-	result, err := h.usecase.ListParticipants(c.Request.Context(), userID, examID)
+	result, err := h.usecase.ListParticipants(c.Request.Context(), userID, userRole, examID)
 	if err != nil {
 		if err == usecase.ErrUnauthorized {
 			response.Forbidden(c, "You don't have permission to view participants for this exam")
@@ -328,10 +337,12 @@ func (h *ExamHandler) RemoveParticipant(c *gin.Context) {
 		return
 	}
 
+	userRole, _ := middlewares.GetUserRole(c)
+
 	examID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	participantID, _ := strconv.ParseInt(c.Param("userId"), 10, 64)
 
-	err := h.usecase.RemoveParticipant(c.Request.Context(), userID, examID, participantID)
+	err := h.usecase.RemoveParticipant(c.Request.Context(), userID, userRole, examID, participantID)
 	if err != nil {
 		handleExamError(c, err)
 		return
@@ -465,6 +476,17 @@ func handleExamError(c *gin.Context, err error) {
 	case usecase.ErrUnauthorized:
 		response.Forbidden(c, "You are not authorized to perform this action")
 	default:
+		// Check for specific business logic errors that should be BadRequest
+		errStr := err.Error()
+		if strings.Contains(errStr, "already exists") ||
+			strings.Contains(errStr, "does not exist") ||
+			strings.Contains(errStr, "no participants were added") ||
+			strings.Contains(errStr, "failed to add") ||
+			strings.Contains(errStr, "problem not found") ||
+			strings.Contains(errStr, "user ID") {
+			response.BadRequest(c, errStr)
+			return
+		}
 		response.InternalServerError(c, err.Error())
 	}
 }

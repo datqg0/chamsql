@@ -41,8 +41,20 @@ function ExamsPage() {
     const [selectedExam, setSelectedExam] = useState<Exam | null>(null)
     const [showPDFImport, setShowPDFImport] = useState(false)
 
+    const { data: selectedExamDetails } = useQuery({
+        queryKey: ['exam', selectedExam?.id],
+        queryFn: () => examsService.getById(selectedExam!.id),
+        enabled: !!selectedExam,
+    })
+
+    const { data: selectedExamParticipants = [] } = useQuery({
+        queryKey: ['exam-participants', selectedExam?.id],
+        queryFn: () => examsService.listParticipants(selectedExam!.id),
+        enabled: !!selectedExam,
+    })
+
     // Fetch exams list
-    const { data: exams = [], isLoading, refetch } = useQuery({
+    const { data: exams = [], isLoading } = useQuery({
         queryKey: ['exams'],
         queryFn: () => examsService.list(),
     })
@@ -67,6 +79,8 @@ function ExamsPage() {
 
     // Exam Detail View
     if (selectedExam) {
+        const examDetail = selectedExamDetails ?? selectedExam
+
         return (
             <MainLayout>
                 <div className="space-y-6">
@@ -77,8 +91,8 @@ function ExamsPage() {
                             Quay lại
                         </Button>
                         <div className="flex-1">
-                            <h1 className="text-3xl font-bold">{selectedExam.title}</h1>
-                            <p className="text-muted-foreground">{selectedExam.description}</p>
+                            <h1 className="text-3xl font-bold">{examDetail.title}</h1>
+                            <p className="text-muted-foreground">{examDetail.description}</p>
                         </div>
                     </div>
 
@@ -94,19 +108,19 @@ function ExamsPage() {
                             <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div>
                                     <p className="text-sm text-muted-foreground">Thời gian bắt đầu</p>
-                                    <p className="font-medium">{formatDateTime(selectedExam.startTime)}</p>
+                                    <p className="font-medium">{formatDateTime(examDetail.startTime)}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-muted-foreground">Thời gian kết thúc</p>
-                                    <p className="font-medium">{formatDateTime(selectedExam.endTime)}</p>
+                                    <p className="font-medium">{formatDateTime(examDetail.endTime)}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-muted-foreground">Thời lượng</p>
-                                    <p className="font-medium">{selectedExam.durationMinutes} phút</p>
+                                    <p className="font-medium">{examDetail.durationMinutes} phút</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-muted-foreground">Số lần thi tối đa</p>
-                                    <p className="font-medium">{selectedExam.maxAttempts}</p>
+                                    <p className="font-medium">{examDetail.maxAttempts}</p>
                                 </div>
                             </CardContent>
                         </Card>
@@ -117,19 +131,22 @@ function ExamsPage() {
                                 <div className="flex items-center justify-between">
                                     <CardTitle className="flex items-center gap-2">
                                         <FileText className="h-5 w-5" />
-                                        Bài tập ({selectedExam.problems?.length || 0})
+                                        Bài tập ({examDetail.problems?.length || 0})
                                     </CardTitle>
                                     <AddProblemsDialog
-                                        examId={selectedExam.id}
-                                        currentProblemsCount={selectedExam.problems?.length || 0}
-                                        onSuccess={() => refetch()}
+                                        examId={examDetail.id}
+                                        currentProblemsCount={examDetail.problems?.length || 0}
+                                        onSuccess={() => {
+                                            queryClient.invalidateQueries({ queryKey: ['exam', examDetail.id] })
+                                            queryClient.invalidateQueries({ queryKey: ['exams'] })
+                                        }}
                                     />
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                {selectedExam.problems && selectedExam.problems.length > 0 ? (
+                                {examDetail.problems && examDetail.problems.length > 0 ? (
                                     <div className="space-y-2">
-                                        {selectedExam.problems.map((examProblem) => (
+                                        {examDetail.problems.map((examProblem) => (
                                             <div
                                                 key={examProblem.id}
                                                 className="flex items-center justify-between p-3 border rounded-lg"
@@ -165,15 +182,36 @@ function ExamsPage() {
                                         Sinh viên
                                     </CardTitle>
                                     <AddParticipantsDialog
-                                        examId={selectedExam.id}
-                                        onSuccess={() => refetch()}
+                                        examId={examDetail.id}
+                                        onSuccess={() => {
+                                            queryClient.invalidateQueries({ queryKey: ['exam', examDetail.id] })
+                                            queryClient.invalidateQueries({ queryKey: ['exam-participants', examDetail.id] })
+                                            queryClient.invalidateQueries({ queryKey: ['exams'] })
+                                        }}
                                     />
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <p className="text-center text-muted-foreground py-8">
-                                    Chưa có sinh viên nào
-                                </p>
+                                {selectedExamParticipants.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {selectedExamParticipants.map((participant) => (
+                                            <div
+                                                key={participant.id}
+                                                className="flex items-center justify-between p-3 border rounded-lg"
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium truncate">{participant.fullName || `User ${participant.userId}`}</p>
+                                                    <p className="text-sm text-muted-foreground truncate">{participant.email}</p>
+                                                </div>
+                                                <span className="text-xs text-muted-foreground">{participant.status}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-center text-muted-foreground py-8">
+                                        Chưa có sinh viên nào
+                                    </p>
+                                )}
                             </CardContent>
                         </Card>
                     </div>

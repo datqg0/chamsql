@@ -2,7 +2,8 @@ package repository
 
 import (
 	"context"
-	"errors"
+	"database/sql"
+	"fmt"
 
 	"backend/db"
 	"backend/internals/pdf/domain"
@@ -42,65 +43,171 @@ func NewPDFRepository(database *db.Database) IPDFRepository {
 	}
 }
 
-// NOTE: PDF repository functionality not yet implemented
-// All methods below return "not implemented" errors until PDF schema is ready
+func mapPdfUpload(m models.PdfUpload) *domain.PDFUpload {
+	errMsg := sql.NullString{Valid: false}
+	if m.ErrorMessage != nil {
+		errMsg = sql.NullString{String: *m.ErrorMessage, Valid: true}
+	}
 
-// CreatePDFUpload inserts a new PDF upload record
+	return &domain.PDFUpload{
+		ID:               m.ID,
+		LecturerID:       m.LecturerID,
+		FilePath:         m.FilePath,
+		FileName:         m.FileName,
+		OriginalFilename: m.OriginalFilename,
+		Status:           m.Status,
+		ExtractionResult: m.ExtractionResult,
+		ErrorMessage:     errMsg,
+		CreatedAt:        m.CreatedAt.Time,
+		UpdatedAt:        m.UpdatedAt.Time,
+	}
+}
+
+func mapProblemReviewQueue(m models.ProblemReviewQueue) *domain.ProblemReviewQueue {
+	reviewerID := sql.NullInt64{Valid: false}
+	if m.ReviewerID != nil {
+		reviewerID = sql.NullInt64{Int64: *m.ReviewerID, Valid: true}
+	}
+
+	reviewNotes := sql.NullString{Valid: false}
+	if m.ReviewNotes != nil {
+		reviewNotes = sql.NullString{String: *m.ReviewNotes, Valid: true}
+	}
+
+	reviewedAt := sql.NullTime{Valid: false}
+	if m.ReviewedAt.Valid {
+		reviewedAt = sql.NullTime{Time: m.ReviewedAt.Time, Valid: true}
+	}
+
+	return &domain.ProblemReviewQueue{
+		ID:            m.ID,
+		PDFUploadID:   m.PdfUploadID,
+		ProblemNumber: int(m.ProblemNumber),
+		ProblemDraft:  m.ProblemDraft,
+		Status:        m.Status,
+		ReviewerID:    reviewerID,
+		ReviewNotes:   reviewNotes,
+		EditsMade:     m.EditsMade,
+		ReviewedAt:    reviewedAt,
+		CreatedAt:     m.CreatedAt.Time,
+		UpdatedAt:     m.UpdatedAt.Time,
+	}
+}
+
 func (r *pdfRepository) CreatePDFUpload(ctx context.Context, lecturerID int64, filePath, fileName, originalFilename string) (*domain.PDFUpload, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.CreatePDFUpload(ctx, models.CreatePDFUploadParams{
+		LecturerID:       lecturerID,
+		FilePath:         filePath,
+		FileName:         fileName,
+		OriginalFilename: originalFilename,
+		Status:           "uploading",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapPdfUpload(res), nil
 }
 
-// GetPDFUploadByID retrieves a PDF upload by ID
 func (r *pdfRepository) GetPDFUploadByID(ctx context.Context, id int64) (*domain.PDFUpload, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.GetPDFUploadByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return mapPdfUpload(res), nil
 }
 
-// GetPDFUploadsByLecturer retrieves all PDF uploads for a lecturer
 func (r *pdfRepository) GetPDFUploadsByLecturer(ctx context.Context, lecturerID int64, limit, offset int32) ([]domain.PDFUpload, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	return []domain.PDFUpload{}, nil
 }
 
-// UpdatePDFUploadStatus updates the status of a PDF upload
 func (r *pdfRepository) UpdatePDFUploadStatus(ctx context.Context, id int64, status string) (*domain.PDFUpload, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.UpdatePDFUploadStatus(ctx, models.UpdatePDFUploadStatusParams{
+		ID:     id,
+		Status: status,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapPdfUpload(res), nil
 }
 
-// UpdatePDFUploadWithExtraction updates PDF upload with extraction results
 func (r *pdfRepository) UpdatePDFUploadWithExtraction(ctx context.Context, id int64, status string, extractionResult []byte) (*domain.PDFUpload, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.UpdatePDFUploadWithExtraction(ctx, models.UpdatePDFUploadWithExtractionParams{
+		ID:               id,
+		Status:           status,
+		ExtractionResult: extractionResult,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapPdfUpload(res), nil
 }
 
-// UpdatePDFUploadError updates PDF upload with error status
 func (r *pdfRepository) UpdatePDFUploadError(ctx context.Context, id int64, errorMessage string) (*domain.PDFUpload, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	errMsg := errorMessage
+	res, err := r.queries.UpdatePDFUploadError(ctx, models.UpdatePDFUploadErrorParams{
+		ID:           id,
+		ErrorMessage: &errMsg,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapPdfUpload(res), nil
 }
 
-// CreateProblemReviewQueue creates a new problem review queue entry
 func (r *pdfRepository) CreateProblemReviewQueue(ctx context.Context, pdfUploadID int64, problemNumber int, problemDraft []byte) (*domain.ProblemReviewQueue, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.CreateProblemReviewQueue(ctx, models.CreateProblemReviewQueueParams{
+		PdfUploadID:   pdfUploadID,
+		ProblemNumber: int32(problemNumber),
+		ProblemDraft:  problemDraft,
+		Status:        "pending",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapProblemReviewQueue(res), nil
 }
 
-// GetProblemReviewQueueByID retrieves a problem review queue entry by ID
 func (r *pdfRepository) GetProblemReviewQueueByID(ctx context.Context, id int64) (*domain.ProblemReviewQueue, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.GetProblemReviewQueueByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return mapProblemReviewQueue(res), nil
 }
 
-// GetProblemReviewQueueByPDF retrieves all review queue entries for a PDF upload
 func (r *pdfRepository) GetProblemReviewQueueByPDF(ctx context.Context, pdfUploadID int64) ([]domain.ProblemReviewQueue, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.GetProblemReviewQueueByPDF(ctx, pdfUploadID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.ProblemReviewQueue, len(res))
+	for i, r := range res {
+		result[i] = *mapProblemReviewQueue(r)
+	}
+	return result, nil
 }
 
-// GetProblemReviewQueueByStatus retrieves review queue entries by status
 func (r *pdfRepository) GetProblemReviewQueueByStatus(ctx context.Context, status string, limit, offset int32) ([]domain.ProblemReviewQueue, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	res, err := r.queries.GetProblemReviewQueueByStatus(ctx, models.GetProblemReviewQueueByStatusParams{
+		Status: status,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.ProblemReviewQueue, len(res))
+	for i, r := range res {
+		result[i] = *mapProblemReviewQueue(r)
+	}
+	return result, nil
 }
 
-// UpdateProblemReviewStatus updates the status of a problem review
 func (r *pdfRepository) UpdateProblemReviewStatus(ctx context.Context, id int64, status string, reviewerID int64, reviewNotes string) (*domain.ProblemReviewQueue, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	return nil, fmt.Errorf("UpdateProblemReviewStatus not implemented in sqlc")
 }
 
-// UpdateProblemReviewDraft updates the draft and edits of a problem review
 func (r *pdfRepository) UpdateProblemReviewDraft(ctx context.Context, id int64, problemDraft, editsMade []byte) (*domain.ProblemReviewQueue, error) {
-	return nil, errors.New("PDF upload functionality not yet implemented")
+	return nil, fmt.Errorf("UpdateProblemReviewDraft not implemented in sqlc")
 }

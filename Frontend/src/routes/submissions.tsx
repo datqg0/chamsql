@@ -112,8 +112,21 @@ function SubmissionsPage() {
     const loadMyExams = async () => {
         setIsLoadingExams(true)
         try {
-            const data = await examsService.getMyExams()
-            setMyExams(Array.isArray(data) ? data : [])
+            if (isLecturer) {
+                const exams = await examsService.list()
+                const normalized: MyExam[] = (Array.isArray(exams) ? exams : []).map((exam) => ({
+                    id: exam.id,
+                    exam,
+                    status: 'not_started',
+                    score: 0,
+                    totalPoints: exam.problemCount ?? 0,
+                    attemptNumber: 0,
+                }))
+                setMyExams(normalized)
+            } else {
+                const data = await examsService.getMyExams()
+                setMyExams(Array.isArray(data) ? data : [])
+            }
         } catch (error) {
             console.error('Error loading exams:', error)
             toast.error('Không thể tải danh sách đề thi')
@@ -852,12 +865,21 @@ function SubmissionsPage() {
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <Button
-                                                        onClick={() => handleStartExam(myExam)}
-                                                        disabled={!canStartExam(myExam.exam)}
-                                                    >
-                                                        {canStartExam(myExam.exam) ? 'Bắt đầu làm bài' : 'Chưa mở'}
-                                                    </Button>
+                                                    {isLecturer ? (
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={() => navigate({ to: '/exams' as any })}
+                                                        >
+                                                            Quản lý kỳ thi
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            onClick={() => handleStartExam(myExam)}
+                                                            disabled={!canStartExam(myExam.exam)}
+                                                        >
+                                                            {canStartExam(myExam.exam) ? 'Bắt đầu làm bài' : 'Chưa mở'}
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </CardContent>
                                         </Card>

@@ -3,6 +3,7 @@ import type {
     CreateExamRequest,
     AddExamProblemRequest,
     AddParticipantsRequest,
+    ExamParticipant,
     SubmitExamAnswerRequest,
     MyExam,
 } from '@/types/exam.types'
@@ -31,12 +32,31 @@ export const examsService = {
         return data
     },
 
+    async getById(examId: number): Promise<Exam> {
+        const { data } = await api.get<any>(API_ENDPOINTS.exams.byId(examId))
+        if (data && data.data) {
+            return data.data
+        }
+        return data
+    },
+
     async addProblem(examId: number, request: AddExamProblemRequest): Promise<void> {
         await api.post(API_ENDPOINTS.exams.addProblem(examId), request)
     },
 
     async addParticipants(examId: number, request: AddParticipantsRequest): Promise<void> {
         await api.post(API_ENDPOINTS.exams.addParticipants(examId), request)
+    },
+
+    async listParticipants(examId: number): Promise<ExamParticipant[]> {
+        const { data } = await api.get<any>(API_ENDPOINTS.exams.listParticipants(examId))
+        if (data && Array.isArray(data.data)) {
+            return data.data
+        }
+        if (Array.isArray(data)) {
+            return data
+        }
+        return []
     },
 
     async start(examId: number): Promise<{ success: boolean; message?: string }> {
@@ -78,8 +98,8 @@ export const examsService = {
         const formData = new FormData()
         formData.append('file', file)
 
-        const { data } = await api.post<{ success: boolean; examId?: number; message?: string }>(
-            `${API_ENDPOINTS.exams.create}/import`,
+        const { data } = await api.post<any>(
+            API_ENDPOINTS.pdf.upload,
             formData,
             {
                 headers: {
@@ -87,6 +107,11 @@ export const examsService = {
                 },
             }
         )
-        return data
+
+        const payload = data?.data ?? data
+        return {
+            success: Boolean(payload?.id),
+            message: payload?.message,
+        }
     },
 }

@@ -183,6 +183,18 @@ export interface AddParticipantsRequest {
     userIds: number[]
 }
 
+export interface ExamParticipant {
+    id: number
+    userId: number
+    fullName: string
+    email: string
+    studentId?: string
+    status: string
+    startedAt?: string
+    submittedAt?: string
+    totalScore: number
+}
+
 export interface ExamSubmission {
     id: number
     examId: number

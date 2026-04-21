@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"backend/configs"
@@ -39,14 +41,14 @@ type IExamUseCase interface {
 	Delete(ctx context.Context, userID int64, examID int64) error
 
 	// Problem management
-	AddProblem(ctx context.Context, userID int64, examID int64, req *dto.AddProblemRequest) error
-	RemoveProblem(ctx context.Context, userID int64, examID, problemID int64) error
+	AddProblem(ctx context.Context, userID int64, userRole string, examID int64, req *dto.AddProblemRequest) error
+	RemoveProblem(ctx context.Context, userID int64, userRole string, examID, problemID int64) error
 	ListProblems(ctx context.Context, examID int64) ([]dto.ExamProblemResponse, error)
 
 	// Participant management
-	AddParticipants(ctx context.Context, userID int64, examID int64, req *dto.AddParticipantsRequest) error
-	RemoveParticipant(ctx context.Context, userID int64, examID, participantID int64) error
-	ListParticipants(ctx context.Context, userID int64, examID int64) ([]dto.ParticipantResponse, error)
+	AddParticipants(ctx context.Context, userID int64, userRole string, examID int64, req *dto.AddParticipantsRequest) error
+	RemoveParticipant(ctx context.Context, userID int64, userRole string, examID, participantID int64) error
+	ListParticipants(ctx context.Context, userID int64, userRole string, examID int64) ([]dto.ParticipantResponse, error)
 
 	// Student actions
 	StartExam(ctx context.Context, userID int64, examID int64) (*dto.StartExamResponse, error)
@@ -301,13 +303,24 @@ func (u *examUseCase) Delete(ctx context.Context, userID int64, examID int64) er
 }
 
 // Problem management
-func (u *examUseCase) AddProblem(ctx context.Context, userID int64, examID int64, req *dto.AddProblemRequest) error {
+func (u *examUseCase) AddProblem(ctx context.Context, userID int64, userRole string, examID int64, req *dto.AddProblemRequest) error {
 	exam, err := u.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return ErrExamNotFound
 	}
-	if exam.CreatedBy != userID {
+	// Allow exam creator or admins to add problems
+	if exam.CreatedBy != userID && userRole != "admin" {
 		return ErrUnauthorized
+	}
+
+	// Check if problem already exists in exam
+	existingProblems, err := u.examRepo.ListProblems(ctx, examID)
+	if err == nil {
+		for _, p := range existingProblems {
+			if p.ProblemID == req.ProblemID {
+				return errors.New("problem already exists in this exam")
+			}
+		}
 	}
 
 	points := int32(req.Points)
@@ -318,15 +331,26 @@ func (u *examUseCase) AddProblem(ctx context.Context, userID int64, examID int64
 		Points:    &points,
 		SortOrder: &sortOrder,
 	})
-	return err
+	if err != nil {
+		// Check for foreign key violation
+		if strings.Contains(err.Error(), "foreign key constraint") {
+			return errors.New("problem not found: the problem ID does not exist")
+		}
+		if strings.Contains(err.Error(), "duplicate key") {
+			return errors.New("problem already exists in this exam")
+		}
+		return fmt.Errorf("failed to add problem: %w", err)
+	}
+	return nil
 }
 
-func (u *examUseCase) RemoveProblem(ctx context.Context, userID int64, examID, problemID int64) error {
+func (u *examUseCase) RemoveProblem(ctx context.Context, userID int64, userRole string, examID, problemID int64) error {
 	exam, err := u.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return ErrExamNotFound
 	}
-	if exam.CreatedBy != userID {
+	// Allow exam creator or admins to remove problems
+	if exam.CreatedBy != userID && userRole != "admin" {
 		return ErrUnauthorized
 	}
 	return u.examRepo.RemoveProblem(ctx, examID, problemID)
@@ -354,40 +378,69 @@ func (u *examUseCase) ListProblems(ctx context.Context, examID int64) ([]dto.Exa
 }
 
 // Participant management
-func (u *examUseCase) AddParticipants(ctx context.Context, userID int64, examID int64, req *dto.AddParticipantsRequest) error {
+func (u *examUseCase) AddParticipants(ctx context.Context, userID int64, userRole string, examID int64, req *dto.AddParticipantsRequest) error {
 	exam, err := u.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return ErrExamNotFound
 	}
-	if exam.CreatedBy != userID {
+	// Allow exam creator or admins to add participants
+	if exam.CreatedBy != userID && userRole != "admin" {
 		return ErrUnauthorized
 	}
 
+	// Get existing participants to avoid duplicates
+	existingParticipants, _ := u.examRepo.ListParticipants(ctx, examID)
+	existingMap := make(map[int64]bool)
+	for _, p := range existingParticipants {
+		existingMap[p.UserID] = true
+	}
+
+	var addedCount int
 	for _, uid := range req.UserIDs {
-		_, _ = u.examRepo.AddParticipant(ctx, examID, uid)
+		// Skip if already exists
+		if existingMap[uid] {
+			continue
+		}
+		_, err := u.examRepo.AddParticipant(ctx, examID, uid)
+		if err != nil {
+			// Check for foreign key violation (user doesn't exist)
+			if strings.Contains(err.Error(), "foreign key constraint") {
+				return fmt.Errorf("user ID %d does not exist", uid)
+			}
+			// Log but don't fail for other errors (like duplicate)
+			continue
+		}
+		addedCount++
+	}
+
+	// Idempotent behavior: if all users are already participants, treat as success.
+	// Invalid user IDs are returned earlier as explicit foreign key errors.
+	if addedCount == 0 && len(req.UserIDs) > 0 {
+		return nil
 	}
 	return nil
 }
 
-func (u *examUseCase) RemoveParticipant(ctx context.Context, userID int64, examID, participantID int64) error {
+func (u *examUseCase) RemoveParticipant(ctx context.Context, userID int64, userRole string, examID, participantID int64) error {
 	exam, err := u.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return ErrExamNotFound
 	}
-	if exam.CreatedBy != userID {
+	// Allow exam creator or admins to remove participants
+	if exam.CreatedBy != userID && userRole != "admin" {
 		return ErrUnauthorized
 	}
 	return u.examRepo.RemoveParticipant(ctx, examID, participantID)
 }
 
-func (u *examUseCase) ListParticipants(ctx context.Context, userID int64, examID int64) ([]dto.ParticipantResponse, error) {
+func (u *examUseCase) ListParticipants(ctx context.Context, userID int64, userRole string, examID int64) ([]dto.ParticipantResponse, error) {
 	exam, err := u.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return nil, ErrExamNotFound
 	}
 
-	// Check ownership - only the exam creator can list participants
-	if exam.CreatedBy != userID {
+	// Allow exam creator or admins to list participants
+	if exam.CreatedBy != userID && userRole != "admin" {
 		return nil, ErrUnauthorized
 	}
 

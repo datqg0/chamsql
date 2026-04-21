@@ -2,8 +2,11 @@ package http
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"net/http"
 	"strconv"
+	"time"
 
 	"backend/internals/pdf/controller/dto"
 	"backend/internals/pdf/usecase"
@@ -55,20 +58,18 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Save file (placeholder - in production use MinIO)
-	// For now, assume file is saved to temp location
-	filePath := "/tmp/" + file.Filename
-
-	// Open file
-	src, err := file.Open()
-	if err != nil {
-		response.InternalServerError(c, "Failed to open file")
+	// Save uploaded file to OS temp directory (cross-platform)
+	tmpDir := filepath.Join(os.TempDir(), "chamsql", "pdf_uploads")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		response.InternalServerError(c, "Failed to prepare upload directory")
 		return
 	}
-	defer src.Close()
-
-	// TODO: Save to MinIO or temp storage
-	// For now just create the upload record
+	storedFileName := strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + filepath.Base(file.Filename)
+	filePath := filepath.Join(tmpDir, storedFileName)
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
+		response.InternalServerError(c, "Failed to save uploaded file")
+		return
+	}
 
 	// Create upload record
 	upload, err := h.uploadManager.HandleUpload(c.Request.Context(), lecturerID, filePath, file.Filename, file.Filename)
