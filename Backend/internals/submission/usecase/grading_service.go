@@ -68,7 +68,7 @@ func (s *gradingService) Grade(ctx context.Context, req *domain.StudentSubmissio
 
 	// Execute tests and collect results
 	passedTests := 0
-	dbType := runner.DBType("postgresql") // Default to PostgreSQL
+	dbType := runner.DBTypePostgreSQL
 
 	for _, testCase := range req.TestCases {
 		testResult := s.executeTestCase(ctx, req.StudentSQL, testCase, dbType)

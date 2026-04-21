@@ -3,9 +3,11 @@ package runner
 import (
 	"context"
 	"database/sql"
+
 	//"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -109,6 +111,14 @@ func (r *runner) getConnection(dbType DBType) (*sql.DB, error) {
 		return nil, fmt.Errorf("%w: %s sandbox not configured", ErrConnectionFailed, dbType)
 	}
 
+	if driver == "mysql" {
+		normalizedDSN, err := normalizeMySQLDSN(dsn)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		}
+		dsn = normalizedDSN
+	}
+
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
@@ -126,6 +136,54 @@ func (r *runner) getConnection(dbType DBType) (*sql.DB, error) {
 
 	r.connections[dbType] = db
 	return db, nil
+}
+
+func normalizeMySQLDSN(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("empty mysql dsn")
+	}
+
+	// Already in go-sql-driver format.
+	if !strings.HasPrefix(strings.ToLower(raw), "mysql://") {
+		return raw, nil
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+
+	if u.User == nil {
+		return "", errors.New("mysql uri missing user info")
+	}
+
+	username := u.User.Username()
+	password, hasPassword := u.User.Password()
+	host := u.Host
+	if host == "" {
+		host = "127.0.0.1:3306"
+	}
+
+	database := strings.TrimPrefix(u.Path, "/")
+	if database == "" {
+		return "", errors.New("mysql uri missing database name")
+	}
+
+	credentials := username
+	if hasPassword {
+		credentials = fmt.Sprintf("%s:%s", username, password)
+	}
+
+	dsn := fmt.Sprintf("%s@tcp(%s)/%s", credentials, host, database)
+	query := u.RawQuery
+	if query == "" {
+		query = "parseTime=true"
+	} else if !strings.Contains(query, "parseTime=") {
+		query = query + "&parseTime=true"
+	}
+
+	return dsn + "?" + query, nil
 }
 
 // ValidateQuery checks if the query is a SELECT statement only
@@ -294,7 +352,7 @@ func (r *runner) scanRows(rows *sql.Rows) (*QueryResult, error) {
 		row := make([]interface{}, len(columns))
 		for i, col := range raw {
 			if col == nil {
-				row[i] = "" // Handle NULL as empty string? Or "NULL"? Reference uses string(col) which might be "" for nil slice? 
+				row[i] = "" // Handle NULL as empty string? Or "NULL"? Reference uses string(col) which might be "" for nil slice?
 				// sql.RawBytes is a slice. If it's nil/empty, string(col) is "".
 				// Let's assume empty string for simplicity matching reference.
 			} else {
@@ -324,8 +382,6 @@ func convertValue(v interface{}) interface{} {
 	}
 }
 
-
-
 // Compare compares expected and actual query results using "String & Sorted" logic
 func (r *runner) Compare(expected, actual *QueryResult, orderMatters bool) *CompareResult {
 	result := &CompareResult{
@@ -342,7 +398,7 @@ func (r *runner) Compare(expected, actual *QueryResult, orderMatters bool) *Comp
 	}
 
 	// NOTE: We IGNORE column names and count to strict match sql-judge
-	// But different column counts usually imply wrong query. 
+	// But different column counts usually imply wrong query.
 	// sql-judge checks DeepEqual of [][]string, which implies inner slice length must match.
 	// So we implicitly check column count via row comparison.
 
@@ -368,7 +424,7 @@ func (r *runner) Compare(expected, actual *QueryResult, orderMatters bool) *Comp
 	if !reflect.DeepEqual(expRows, actRows) {
 		result.IsCorrect = false
 		result.Message = "Result mismatch (values do not match)"
-		
+
 		// Find first mismatch for detail
 		for i := range expRows {
 			if i >= len(actRows) || !reflect.DeepEqual(expRows[i], actRows[i]) {

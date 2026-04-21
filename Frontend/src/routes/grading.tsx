@@ -22,7 +22,6 @@ import { MainLayout } from '@/components/layouts/main-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
 import {
     Dialog,
     DialogContent,
@@ -40,20 +39,16 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import {
-    USE_GRADING_MOCK,
-    getMockSubmissions,
-    getMockGradingStats,
-    mockGradeSubmission,
-    mockAutoGrade,
-    MOCK_EXERCISES,
-    type Submission,
-} from '@/mocks/grading.mock'
+import { gradingService, type Submission } from '@/services/grading.service'
+import { examsService } from '@/services/exams.service'
 import { useAuthStore } from '@/stores/use-auth-store'
+import type { Exam } from '@/types/exam.types'
 
 function GradingPage() {
     const { isOperator, userRole } = useAuthStore()
     const canAccess = isOperator() || userRole === 'lecturer'
+    const [exams, setExams] = useState<Exam[]>([])
+    const [selectedExamId, setSelectedExamId] = useState<number | null>(null)
     const [submissions, setSubmissions] = useState<Submission[]>([])
     const [stats, setStats] = useState({
         totalSubmissions: 0,
@@ -64,7 +59,6 @@ function GradingPage() {
     })
     const [isLoading, setIsLoading] = useState(true)
     const [filterStatus, setFilterStatus] = useState<string>('all')
-    const [filterExercise, setFilterExercise] = useState<string>('all')
     const [searchQuery, setSearchQuery] = useState('')
 
     // Dialog states
@@ -74,34 +68,56 @@ function GradingPage() {
     const [gradeScore, setGradeScore] = useState('')
     const [gradeFeedback, setGradeFeedback] = useState('')
 
-    // Load data
+    // Load exams on mount
     useEffect(() => {
-        loadData()
-    }, [filterStatus, filterExercise, searchQuery])
+        loadExams()
+    }, [])
+
+    // Load submissions when exam selected
+    useEffect(() => {
+        if (selectedExamId) {
+            loadData()
+        }
+    }, [selectedExamId, filterStatus, searchQuery])
+
+    const loadExams = async () => {
+        try {
+            const examsData = await examsService.list()
+            setExams(examsData)
+            if (examsData.length > 0) {
+                setSelectedExamId(examsData[0].id)
+            }
+        } catch (error) {
+            toast.error('Không thể tải danh sách kỳ thi')
+        }
+    }
 
     const loadData = async () => {
-        if (!USE_GRADING_MOCK) return
+        if (!selectedExamId) return
 
         setIsLoading(true)
         try {
-            const filters: any = {}
-            if (filterStatus !== 'all') {
-                filters.status = filterStatus
-            }
-            if (filterExercise !== 'all') {
-                filters.exerciseId = parseInt(filterExercise)
-            }
-            if (searchQuery) {
-                filters.studentCode = searchQuery
-            }
-
             const [submissionsData, statsData] = await Promise.all([
-                getMockSubmissions(filters),
-                getMockGradingStats(),
+                gradingService.listUngradedSubmissions(selectedExamId),
+                gradingService.getGradingStats(selectedExamId),
             ])
 
-            setSubmissions(submissionsData)
+            // Filter by status if needed
+            let filtered = submissionsData
+            if (filterStatus !== 'all') {
+                filtered = filtered.filter(s => s.status === filterStatus)
+            }
+            if (searchQuery) {
+                filtered = filtered.filter(s => 
+                    s.studentCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    s.studentName?.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+            }
+
+            setSubmissions(filtered)
             setStats(statsData)
+        } catch (error) {
+            toast.error('Không thể tải dữ liệu bài nộp')
         } finally {
             setIsLoading(false)
         }
@@ -125,18 +141,16 @@ function GradingPage() {
 
         setIsGrading(true)
         try {
-            const result = await mockGradeSubmission(
+            await gradingService.gradeSubmission(
                 selectedSubmission.id,
                 score,
                 gradeFeedback
             )
-            if (result.success) {
-                toast.success(result.message)
-                setIsDetailOpen(false)
-                loadData()
-            } else {
-                toast.error(result.message)
-            }
+            toast.success('Đã lưu điểm thành công')
+            setIsDetailOpen(false)
+            loadData()
+        } catch (error: any) {
+            toast.error(error?.message || 'Chấm điểm thất bại')
         } finally {
             setIsGrading(false)
         }
@@ -145,11 +159,11 @@ function GradingPage() {
     const handleAutoGrade = async (submission: Submission) => {
         setIsGrading(true)
         try {
-            const result = await mockAutoGrade(submission.id)
-            if (result.success) {
-                toast.success(`Chấm tự động: ${result.score}/${submission.maxScore} điểm`)
-                loadData()
-            }
+            const result = await gradingService.autoGrade(submission.id)
+            toast.success(`Chấm tự động: ${result.score}/${submission.maxScore} điểm`)
+            loadData()
+        } catch (error: any) {
+            toast.error(error?.message || 'Chấm tự động thất bại')
         } finally {
             setIsGrading(false)
         }
@@ -288,15 +302,14 @@ function GradingPage() {
                                     <SelectItem value="error">Lỗi</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <Select value={filterExercise} onValueChange={setFilterExercise}>
-                                <SelectTrigger className="w-[200px]">
-                                    <SelectValue placeholder="Bài tập" />
+                            <Select value={selectedExamId?.toString() || ''} onValueChange={(v) => setSelectedExamId(parseInt(v))}>
+                                <SelectTrigger className="w-[250px]">
+                                    <SelectValue placeholder="Chọn kỳ thi" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Tất cả bài tập</SelectItem>
-                                    {MOCK_EXERCISES.map((ex) => (
-                                        <SelectItem key={ex.id} value={ex.id.toString()}>
-                                            {ex.title}
+                                    {exams.map((exam) => (
+                                        <SelectItem key={exam.id} value={exam.id.toString()}>
+                                            {exam.title}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -338,7 +351,7 @@ function GradingPage() {
                                             <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                                 <span className="flex items-center gap-1">
                                                     <FileText className="h-3 w-3" />
-                                                    {submission.exerciseName}
+                                                    {submission.problemTitle}
                                                 </span>
                                                 <span className="flex items-center gap-1">
                                                     <Calendar className="h-3 w-3" />
@@ -386,7 +399,7 @@ function GradingPage() {
                     <DialogHeader>
                         <DialogTitle>Chi tiết bài nộp</DialogTitle>
                         <DialogDescription>
-                            {selectedSubmission?.studentName} - {selectedSubmission?.exerciseName}
+                            {selectedSubmission?.studentName} - {selectedSubmission?.problemTitle}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -409,7 +422,7 @@ function GradingPage() {
                                 <div className="flex items-center gap-2">
                                     <Clock className="h-4 w-4 text-muted-foreground" />
                                     <span className="text-sm">
-                                        <strong>Thời gian:</strong> {selectedSubmission.executionTime || 'N/A'}
+                                        <strong>Thời gian:</strong> {selectedSubmission.executionTimeMs ? `${selectedSubmission.executionTimeMs}ms` : 'N/A'}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -424,80 +437,32 @@ function GradingPage() {
                                     Câu truy vấn SQL
                                 </label>
                                 <pre className="p-4 bg-muted rounded-lg text-sm overflow-x-auto">
-                                    {selectedSubmission.sqlQuery}
+                                    {selectedSubmission.submittedCode}
                                 </pre>
                             </div>
 
-                            {/* Test Case Results */}
-                            {selectedSubmission.testResults && selectedSubmission.testResults.length > 0 && (
-                                <div>
-                                    <label className="text-sm font-medium flex items-center gap-2 mb-2">
-                                        <CheckCircle2 className="h-4 w-4" />
-                                        Kết quả Test Cases ({selectedSubmission.passedTests}/{selectedSubmission.totalTests})
-                                    </label>
-                                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
-                                        {selectedSubmission.testResults.map((test, idx) => (
-                                            <div
-                                                key={idx}
-                                                className={cn(
-                                                    "flex items-center justify-between p-2 rounded border text-sm",
-                                                    test.status === 'accepted' ? "bg-green-500/5 border-green-500/20" : "bg-red-500/5 border-red-500/20"
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    {test.status === 'accepted' ? (
-                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                    ) : (
-                                                        <XCircle className="h-4 w-4 text-red-500" />
-                                                    )}
-                                                    <span>{test.name}</span>
-                                                    {test.errorMessage && (
-                                                        <span className="text-xs text-red-500 opacity-70">({test.errorMessage})</span>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <Badge variant="outline" className="text-[10px] font-normal">
-                                                        W: {test.weight}
-                                                    </Badge>
-                                                    <span className={cn(
-                                                        "font-medium",
-                                                        test.status === 'accepted' ? "text-green-600" : "text-red-600"
-                                                    )}>
-                                                        {test.score.toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                            {/* Error Message */}
+                            {selectedSubmission.errorMessage && (
+                                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                                    <label className="text-sm font-medium text-red-600">Lỗi:</label>
+                                    <p className="text-sm text-red-600 mt-1">{selectedSubmission.errorMessage}</p>
                                 </div>
                             )}
 
                             {/* Grading Form */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-sm font-medium">
-                                        Điểm (tối đa {selectedSubmission.maxScore})
-                                    </label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        max={selectedSubmission.maxScore}
-                                        value={gradeScore}
-                                        onChange={(e) => setGradeScore(e.target.value)}
-                                        placeholder="Nhập điểm..."
-                                        className="mt-1"
-                                    />
-                                </div>
-                                <div className="flex items-end">
-                                    {selectedSubmission.isCorrect !== undefined && (
-                                        <Badge
-                                            variant={selectedSubmission.isCorrect ? 'default' : 'destructive'}
-                                            className="mb-2"
-                                        >
-                                            {selectedSubmission.isCorrect ? '✓ Đúng' : '✗ Sai'}
-                                        </Badge>
-                                    )}
-                                </div>
+                            <div>
+                                <label className="text-sm font-medium">
+                                    Điểm (tối đa {selectedSubmission.maxScore})
+                                </label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    max={selectedSubmission.maxScore}
+                                    value={gradeScore}
+                                    onChange={(e) => setGradeScore(e.target.value)}
+                                    placeholder="Nhập điểm..."
+                                    className="mt-1"
+                                />
                             </div>
 
                             <div>

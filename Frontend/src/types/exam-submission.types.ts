@@ -1,9 +1,8 @@
 // Exam Submission related types
 export interface ExamTimerResponse {
+  participantID: number;
   examID: number;
-  userID: number;
   startedAt: string;
-  endTime: string;
   timeRemainingMs: number;
   status: string;
 }
@@ -19,13 +18,14 @@ export interface ProblemSubmissionResult {
   examProblemID: number;
   status: "accepted" | "wrong_answer" | "error";
   score: number;
-  maxScore: number;
+  maxScore?: number;
   isCorrect: boolean;
   actualOutput?: string;
   expectedOutput?: string;
   errorMessage?: string;
-  executionTimeMs: number;
+  executionTimeMs?: number;
   attemptNumber: number;
+  scoringMode?: string;
   feedback?: string;
 }
 
@@ -39,7 +39,16 @@ export interface ExamProblemsResponse {
   status: string;
   timeRemainingMs: number;
   participantStatus: string;
-  problems: ExamProblemDetail[];
+  problems: ExamProblemBrief[];
+}
+
+export interface ExamProblemBrief {
+  examProblemID: number;
+  problemID: number;
+  title: string;
+  difficulty: string;
+  points: number;
+  sortOrder: number;
 }
 
 export interface ExamProblemDetail {
@@ -60,10 +69,9 @@ export interface ExamFinishRequest {
 }
 
 export interface ExamFinishResponse {
+  participantID: number;
   examID: number;
-  userID: number;
   totalScore: number;
-  maxScore: number;
   status: string;
   submittedAt: string;
 }
@@ -75,9 +83,7 @@ export interface ExamProblemSubmissionRequest {
 
 export interface TimeRemainingResponse {
   examID: number;
-  userID: number;
-  startedAt: string;
-  endTime: string;
   timeRemainingMs: number;
-  isExpired: boolean;
+  status: string;
+  message?: string;
 }

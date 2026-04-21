@@ -1,24 +1,29 @@
 package http
 
 import (
+	"backend/configs"
 	"backend/db"
 	"backend/internals/admin/usecase"
 	"backend/pkgs/middlewares"
 	"backend/pkgs/redis"
+	"backend/pkgs/runner"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Routes - Register all admin endpoints
 // Requires authentication and admin role middleware
-func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc) {
+func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc, cfg *configs.Config, r runner.Runner) {
 	uc := usecase.NewAdminUseCase(database, cache)
 	handler := NewAdminHandler(uc)
+	sandboxHandler := NewSandboxHandler(cfg, r)
 
 	admin := rg.Group("/admin")
 	admin.Use(authMiddleware)
 	admin.Use(middlewares.RoleMiddleware("admin"))
 	{
+		// Sandbox management (accessible to admin and lecturer)
+		RegisterSandboxRoutes(admin, sandboxHandler)
 		// System stats
 		admin.GET("/stats", handler.GetSystemStats)
 

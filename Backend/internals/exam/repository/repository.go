@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"backend/db"
 	"backend/sql/models"
@@ -43,6 +44,8 @@ type IExamRepository interface {
 	GetExamSubmission(ctx context.Context, examID, examProblemID, userID int64) (*models.ExamSubmission, error)
 	CountExamSubmissions(ctx context.Context, examID, examProblemID, userID int64) (int64, error)
 	GetExamResults(ctx context.Context, examID int64) ([]models.GetExamResultsRow, error)
+	CalcParticipantTotalScore(ctx context.Context, examID, userID int64) (float64, error)
+	GetMyExamResult(ctx context.Context, examID, userID int64) ([]models.GetMyExamResultRow, error)
 }
 
 type examRepository struct {
@@ -198,10 +201,12 @@ func (r *examRepository) SubmitExam(ctx context.Context, examID, userID int64) (
 }
 
 func (r *examRepository) UpdateScore(ctx context.Context, examID, userID int64, score float64) error {
+	var n pgtype.Numeric
+	_ = n.Scan(fmt.Sprintf("%.2f", score))
 	_, err := r.queries.UpdateParticipantScore(ctx, models.UpdateParticipantScoreParams{
 		ExamID:     examID,
 		UserID:     userID,
-		TotalScore: pgtype.Numeric{Valid: true},
+		TotalScore: n,
 	})
 	return err
 }
@@ -248,4 +253,18 @@ func (r *examRepository) CountExamSubmissions(ctx context.Context, examID, examP
 
 func (r *examRepository) GetExamResults(ctx context.Context, examID int64) ([]models.GetExamResultsRow, error) {
 	return r.queries.GetExamResults(ctx, examID)
+}
+
+func (r *examRepository) CalcParticipantTotalScore(ctx context.Context, examID, userID int64) (float64, error) {
+	return r.queries.CalcParticipantTotalScore(ctx, models.CalcParticipantTotalScoreParams{
+		ExamID: examID,
+		UserID: userID,
+	})
+}
+
+func (r *examRepository) GetMyExamResult(ctx context.Context, examID, userID int64) ([]models.GetMyExamResultRow, error) {
+	return r.queries.GetMyExamResult(ctx, models.GetMyExamResultParams{
+		ExamID: examID,
+		UserID: userID,
+	})
 }

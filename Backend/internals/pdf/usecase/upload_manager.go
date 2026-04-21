@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	aiUsecase "backend/internals/ai/usecase"
 	pdfDomain "backend/internals/pdf/domain"
@@ -17,6 +18,9 @@ type IUploadManager interface {
 	ProcessExtraction(ctx context.Context, pdfUploadID int64) error
 	GenerateAIContent(ctx context.Context, pdfUploadID int64) error
 	GetUploadStatus(ctx context.Context, uploadID int64) (*pdfDomain.PDFUpload, error)
+	GetExtractedProblems(ctx context.Context, pdfUploadID int64) ([]pdfDomain.ProblemReviewQueue, error)
+	ConfirmProblem(ctx context.Context, queueID int64, solutionQuery string, dbType string) error
+	UpdateProblemSolution(ctx context.Context, queueID int64, solutionQuery string) error
 }
 
 // uploadManager implements IUploadManager
@@ -206,4 +210,78 @@ func (m *uploadManager) GetUploadStatus(ctx context.Context, uploadID int64) (*p
 	}
 
 	return upload, nil
+}
+
+// GetExtractedProblems retrieves all problems extracted from a PDF
+func (m *uploadManager) GetExtractedProblems(ctx context.Context, pdfUploadID int64) ([]pdfDomain.ProblemReviewQueue, error) {
+	problems, err := m.pdfRepo.GetProblemReviewQueueByPDF(ctx, pdfUploadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get extracted problems: %w", err)
+	}
+	return problems, nil
+}
+
+// ConfirmProblem saves an extracted problem to the main problems table
+func (m *uploadManager) ConfirmProblem(ctx context.Context, queueID int64, solutionQuery string, dbType string) error {
+	// Get the problem from review queue
+	problem, err := m.pdfRepo.GetProblemReviewQueueByID(ctx, queueID)
+	if err != nil {
+		return fmt.Errorf("failed to get problem from review queue: %w", err)
+	}
+
+	// Parse the problem draft
+	var draft pdfDomain.ProblemDraft
+	if err := json.Unmarshal(problem.ProblemDraft, &draft); err != nil {
+		return fmt.Errorf("failed to parse problem draft: %w", err)
+	}
+
+	// Override with instructor-provided solution if given
+	if solutionQuery != "" {
+		draft.SolutionQuery = solutionQuery
+	}
+
+	// TODO: Save to main problems table
+	// This would require a problem repository - for now, just update the queue status
+	// Using lecturerID = 0 as placeholder (should get from context)
+	_, err = m.pdfRepo.UpdateProblemReviewStatus(ctx, queueID, "confirmed", 0, "Confirmed by instructor")
+	if err != nil {
+		return fmt.Errorf("failed to update problem status: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateProblemSolution updates the solution query for a problem in review queue
+func (m *uploadManager) UpdateProblemSolution(ctx context.Context, queueID int64, solutionQuery string) error {
+	// Get the problem from review queue
+	problem, err := m.pdfRepo.GetProblemReviewQueueByID(ctx, queueID)
+	if err != nil {
+		return fmt.Errorf("failed to get problem from review queue: %w", err)
+	}
+
+	// Parse the problem draft
+	var draft pdfDomain.ProblemDraft
+	if err := json.Unmarshal(problem.ProblemDraft, &draft); err != nil {
+		return fmt.Errorf("failed to parse problem draft: %w", err)
+	}
+
+	// Update solution
+	draft.SolutionQuery = solutionQuery
+
+	// Marshal back
+	updatedDraft, err := json.Marshal(draft)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated draft: %w", err)
+	}
+
+	// Track the edit
+	editsMade := []byte(fmt.Sprintf(`{"solution_updated_at": "%s"}`, time.Now().Format(time.RFC3339)))
+
+	// Update in database
+	_, err = m.pdfRepo.UpdateProblemReviewDraft(ctx, queueID, updatedDraft, editsMade)
+	if err != nil {
+		return fmt.Errorf("failed to update problem solution: %w", err)
+	}
+
+	return nil
 }

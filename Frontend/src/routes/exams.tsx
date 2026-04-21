@@ -16,6 +16,7 @@ import toast from 'react-hot-toast'
 import { AddParticipantsDialog } from '@/components/exams/add-participants-dialog'
 import { AddProblemsDialog } from '@/components/exams/add-problems-dialog'
 import { CreateExamDialog } from '@/components/exams/create-exam-dialog'
+import { PDFImportWizard } from '@/components/exam/pdf-import-wizard'
 import { MainLayout } from '@/components/layouts/main-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ function ExamsPage() {
     }
 
     const [selectedExam, setSelectedExam] = useState<Exam | null>(null)
+    const [showPDFImport, setShowPDFImport] = useState(false)
 
     // Fetch exams list
     const { data: exams = [], isLoading, refetch } = useQuery({
@@ -192,11 +194,17 @@ function ExamsPage() {
                             Tạo và quản lý kỳ thi cho sinh viên
                         </p>
                     </div>
-                    <CreateExamDialog
-                        onSuccess={() => {
-                            queryClient.invalidateQueries({ queryKey: ['exams'] })
-                        }}
-                    />
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setShowPDFImport(true)}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Import PDF
+                        </Button>
+                        <CreateExamDialog
+                            onSuccess={() => {
+                                queryClient.invalidateQueries({ queryKey: ['exams'] })
+                            }}
+                        />
+                    </div>
                 </div>
 
                 {/* Exams Grid */}
@@ -254,6 +262,16 @@ function ExamsPage() {
                         ))
                     )}
                 </div>
+
+                {/* PDF Import Wizard */}
+                <PDFImportWizard
+                    open={showPDFImport}
+                    onOpenChange={setShowPDFImport}
+                    onSuccess={() => {
+                        toast.success('Import câu hỏi thành công!')
+                        setShowPDFImport(false)
+                    }}
+                />
             </div>
         </MainLayout>
     )

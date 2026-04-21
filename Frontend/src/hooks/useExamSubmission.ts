@@ -37,7 +37,7 @@ export const useExamSubmission = (examID: number) => {
           params.problemID,
           {
             code: params.code,
-            language: params.language || 'postgresql',
+            databaseType: params.language || 'postgresql',
           }
         );
 

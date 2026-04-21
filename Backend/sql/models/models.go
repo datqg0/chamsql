@@ -11,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AiGeneratedContent struct {
+	ID                 int64              `json:"id"`
+	PdfUploadID        int64              `json:"pdfUploadId"`
+	ProblemNumber      int32              `json:"problemNumber"`
+	ContentType        string             `json:"contentType"`
+	OriginalContent    *string            `json:"originalContent"`
+	AiGeneratedContent *string            `json:"aiGeneratedContent"`
+	ConfidenceScore    pgtype.Numeric     `json:"confidenceScore"`
+	AiProvider         *string            `json:"aiProvider"`
+	IsApproved         *bool              `json:"isApproved"`
+	LecturerNotes      *string            `json:"lecturerNotes"`
+	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type AuditLog struct {
 	ID           int64              `json:"id"`
 	UserID       *int64             `json:"userId"`
@@ -109,6 +124,17 @@ type ExamSubmission struct {
 	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
 }
 
+type ExcelExport struct {
+	ID         int64              `json:"id"`
+	ExamID     int64              `json:"examId"`
+	ExportType string             `json:"exportType"`
+	FilePath   string             `json:"filePath"`
+	FileName   string             `json:"fileName"`
+	CreatedBy  int64              `json:"createdBy"`
+	RowCount   *int32             `json:"rowCount"`
+	CreatedAt  pgtype.Timestamptz `json:"createdAt"`
+}
+
 type OutboxEvent struct {
 	ID           uuid.UUID        `json:"id"`
 	Topic        string           `json:"topic"`
@@ -119,6 +145,19 @@ type OutboxEvent struct {
 	PublishedAt  pgtype.Timestamp `json:"publishedAt"`
 	ErrorMessage *string          `json:"errorMessage"`
 	UpdatedAt    pgtype.Timestamp `json:"updatedAt"`
+}
+
+type PdfUpload struct {
+	ID               int64              `json:"id"`
+	LecturerID       int64              `json:"lecturerId"`
+	FilePath         string             `json:"filePath"`
+	FileName         string             `json:"fileName"`
+	OriginalFilename string             `json:"originalFilename"`
+	Status           string             `json:"status"`
+	ExtractionResult []byte             `json:"extractionResult"`
+	ErrorMessage     *string            `json:"errorMessage"`
+	CreatedAt        pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt        pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type Permission struct {
@@ -159,6 +198,20 @@ type Problem struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type ProblemReviewQueue struct {
+	ID            int64              `json:"id"`
+	PdfUploadID   int64              `json:"pdfUploadId"`
+	ProblemNumber int32              `json:"problemNumber"`
+	ProblemDraft  json.RawMessage    `json:"problemDraft"`
+	EditsMade     []byte             `json:"editsMade"`
+	Status        string             `json:"status"`
+	ReviewerID    *int64             `json:"reviewerId"`
+	ReviewNotes   *string            `json:"reviewNotes"`
+	ReviewedAt    pgtype.Timestamptz `json:"reviewedAt"`
+	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt     pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type ProblemTestCase struct {
@@ -233,6 +286,23 @@ type SubmissionTestResult struct {
 	ErrorMessage    *string            `json:"errorMessage"`
 	IsCorrect       *bool              `json:"isCorrect"`
 	CreatedAt       pgtype.Timestamptz `json:"createdAt"`
+}
+
+type TestCaseTemplate struct {
+	ID               int64              `json:"id"`
+	ProblemID        *int64             `json:"problemId"`
+	TestCaseNumber   int32              `json:"testCaseNumber"`
+	Description      *string            `json:"description"`
+	SchemaSql        *string            `json:"schemaSql"`
+	TestDataSql      string             `json:"testDataSql"`
+	ExpectedOutput   []byte             `json:"expectedOutput"`
+	IsPublic         *bool              `json:"isPublic"`
+	Difficulty       *string            `json:"difficulty"`
+	IsValidated      *bool              `json:"isValidated"`
+	ValidationStatus *string            `json:"validationStatus"`
+	ValidationError  *string            `json:"validationError"`
+	CreatedBy        *int64             `json:"createdBy"`
+	CreatedAt        pgtype.Timestamptz `json:"createdAt"`
 }
 
 type Topic struct {

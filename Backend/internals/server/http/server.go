@@ -100,10 +100,10 @@ func (s *Server) MapRoutes() {
 	lecturerHttp.Routes(v1, s.database, s.cache, authMiddleware)
 
 	// Student routes (exam participation)
-	studentHttp.Routes(v1, s.database, s.cache, authMiddleware)
+	studentHttp.Routes(v1, s.database, s.cache, s.queryRunner, authMiddleware)
 
-	// Admin routes (user import, stats)
-	adminHttp.Routes(v1, s.database, s.cache, authMiddleware)
+	// Admin routes (user import, stats, sandbox management)
+	adminHttp.Routes(v1, s.database, s.cache, authMiddleware, s.cfg, s.queryRunner)
 
 	// PDF Upload routes (Phase 4)
 	lecturerGroup := v1.Group("/lecturer")

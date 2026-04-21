@@ -173,6 +173,17 @@ function SubmissionsPage() {
         return now >= start && now <= end
     }
 
+    const getExamProblemKey = (problem: any): number => {
+        return Number(
+            problem?.examProblemID ??
+                problem?.exam_problem_id ??
+                problem?.id ??
+                problem?.problemId ??
+                problem?.problem_id ??
+                0
+        )
+    }
+
     const handleStartExam = async (myExam: MyExam) => {
         if (!canStartExam(myExam.exam)) {
             toast.error('Chưa đến thời gian làm bài hoặc đã hết hạn')
@@ -235,9 +246,15 @@ function SubmissionsPage() {
             // Fallback - use problems API
             try {
                 const currentProblem = examProblems[currentProblemIndex]
-                if (currentProblem?.problem?.id) {
+                const problemID = Number(
+                    currentProblem?.problemID ??
+                        currentProblem?.problem_id ??
+                        currentProblem?.problem?.id ??
+                        0
+                )
+                if (problemID > 0) {
                     const { problemsService } = await import('@/services/problems.service')
-                    const response = await problemsService.run(currentProblem.problem.id, {
+                    const response = await problemsService.run(problemID, {
                         code: sqlQuery,
                         databaseType: selectedExam.exam.allowedDatabases?.[0] || 'postgresql',
                     })
@@ -263,26 +280,33 @@ function SubmissionsPage() {
         setIsSubmitting(true)
 
         try {
-            const problemId = currentProblem.problemId || currentProblem.problem?.id || currentProblem.id
+            const examProblemID = getExamProblemKey(currentProblem)
+            const selectedDatabase = selectedExam.exam.allowedDatabases?.[0] || 'postgresql'
+
+            if (!examProblemID) {
+                toast.error('Không tìm thấy mã câu hỏi trong kỳ thi')
+                return
+            }
+
             const submitResult = await examSubmissionService.submitProblemCode(
                 selectedExam.exam.id,
-                problemId,
+                examProblemID,
                 {
                     code: sqlQuery,
-                    language: 'sql',
+                    databaseType: selectedDatabase,
                 }
             )
 
             // Save submission result
             setSolvedProblems((prev) => ({
                 ...prev,
-                [currentProblem.id]: submitResult,
+                [examProblemID]: submitResult,
             }))
 
             // Save answer locally
             setAnswers((prev) => ({
                 ...prev,
-                [currentProblem.id]: sqlQuery,
+                [examProblemID]: sqlQuery,
             }))
 
             // Show result feedback
@@ -295,7 +319,8 @@ function SubmissionsPage() {
             // Move to next problem if available
             if (currentProblemIndex < examProblems.length - 1) {
                 setCurrentProblemIndex(currentProblemIndex + 1)
-                setSqlQuery(answers[examProblems[currentProblemIndex + 1]?.id] || '')
+                const nextProblemID = getExamProblemKey(examProblems[currentProblemIndex + 1])
+                setSqlQuery(answers[nextProblemID] || '')
                 setResult(null)
             }
         } catch (error: any) {
@@ -372,15 +397,17 @@ function SubmissionsPage() {
         // Save current answer
         const currentProblem = examProblems[currentProblemIndex]
         if (currentProblem) {
+            const currentProblemID = getExamProblemKey(currentProblem)
             setAnswers((prev) => ({
                 ...prev,
-                [currentProblem.id]: sqlQuery,
+                [currentProblemID]: sqlQuery,
             }))
         }
 
         // Load new problem
         setCurrentProblemIndex(index)
-        setSqlQuery(answers[examProblems[index]?.id] || '')
+        const selectedProblemID = getExamProblemKey(examProblems[index])
+        setSqlQuery(answers[selectedProblemID] || '')
         setResult(null)
     }
 

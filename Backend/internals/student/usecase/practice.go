@@ -8,6 +8,7 @@ import (
 
 	"backend/db"
 	"backend/internals/student/controller/dto"
+	"backend/pkgs/runner"
 	"backend/sql/models"
 )
 
@@ -27,11 +28,11 @@ type practiceUseCase struct {
 }
 
 // NewPracticeUseCase - Create new practice usecase
-func NewPracticeUseCase(database *db.Database) IPracticeUseCase {
+func NewPracticeUseCase(database *db.Database, queryRunner runner.Runner) IPracticeUseCase {
 	return &practiceUseCase{
 		db:       database,
 		queries:  models.New(database.GetPool()),
-		executor: NewCodeExecutor(database),
+		executor: NewCodeExecutor(queryRunner),
 	}
 }
 

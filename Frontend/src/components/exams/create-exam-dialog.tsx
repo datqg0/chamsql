@@ -248,7 +248,7 @@ export function CreateExamDialog({ onSuccess }: CreateExamDialogProps) {
                                         <SelectContent>
                                             <SelectItem value="postgresql">PostgreSQL</SelectItem>
                                             <SelectItem value="mysql">MySQL</SelectItem>
-                                            <SelectItem value="sqlite">SQLite</SelectItem>
+                                            <SelectItem value="sqlserver">SQL Server</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <FormMessage />

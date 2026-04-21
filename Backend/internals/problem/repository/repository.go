@@ -26,6 +26,9 @@ type IProblemRepository interface {
 	CreateTestCase(ctx context.Context, params models.CreateProblemTestCaseParams) (*models.ProblemTestCase, error)
 	ListTestCases(ctx context.Context, problemID int64) ([]models.ProblemTestCase, error)
 	DeleteAllTestCases(ctx context.Context, problemID int64) error
+	// User Progress
+	UpsertProgress(ctx context.Context, userID, problemID int64) error
+	MarkProblemSolved(ctx context.Context, userID, problemID int64, bestTimeMs int32) error
 }
 
 type problemRepository struct {
@@ -143,4 +146,21 @@ func (r *problemRepository) ListTestCases(ctx context.Context, problemID int64) 
 
 func (r *problemRepository) DeleteAllTestCases(ctx context.Context, problemID int64) error {
 	return r.queries.DeleteAllProblemTestCases(ctx, problemID)
+}
+
+func (r *problemRepository) UpsertProgress(ctx context.Context, userID, problemID int64) error {
+	_, err := r.queries.UpsertProgress(ctx, models.UpsertProgressParams{
+		UserID:    userID,
+		ProblemID: problemID,
+	})
+	return err
+}
+
+func (r *problemRepository) MarkProblemSolved(ctx context.Context, userID, problemID int64, bestTimeMs int32) error {
+	_, err := r.queries.MarkProblemSolved(ctx, models.MarkProblemSolvedParams{
+		UserID:    userID,
+		ProblemID: problemID,
+		BestTimeMs: &bestTimeMs,
+	})
+	return err
 }

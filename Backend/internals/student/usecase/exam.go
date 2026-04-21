@@ -10,7 +10,9 @@ import (
 	"backend/db"
 	"backend/internals/student/controller/dto"
 	"backend/pkgs/redis"
+	"backend/pkgs/runner"
 	"backend/sql/models"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -31,11 +33,11 @@ type studentExamUseCase struct {
 	cache    redis.IRedis
 }
 
-func NewStudentExamUseCase(database *db.Database, cache redis.IRedis) IStudentExamUseCase {
+func NewStudentExamUseCase(database *db.Database, cache redis.IRedis, queryRunner runner.Runner) IStudentExamUseCase {
 	return &studentExamUseCase{
 		db:       database,
 		queries:  models.New(database.GetPool()),
-		executor: NewCodeExecutor(database),
+		executor: NewCodeExecutor(queryRunner),
 		cache:    cache,
 	}
 }

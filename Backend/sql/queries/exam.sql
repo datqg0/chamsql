@@ -322,3 +322,52 @@ WHERE start_time <= NOW()
   AND (status = 'published' OR status = 'ongoing')
 ORDER BY end_time ASC
 LIMIT $1 OFFSET $2;
+
+-- =============================================
+-- SCORE CALCULATION
+-- =============================================
+
+-- name: CalcParticipantTotalScore :one
+-- Tính tổng điểm dựa trên attempt cuối cùng của mỗi bài
+SELECT COALESCE(SUM(
+    CASE WHEN latest.is_correct THEN ep.points ELSE 0 END
+), 0)::float8 AS total_score
+FROM exam_problems ep
+LEFT JOIN LATERAL (
+    SELECT is_correct
+    FROM exam_submissions es
+    WHERE es.exam_id = ep.exam_id
+      AND es.exam_problem_id = ep.id
+      AND es.user_id = $2
+    ORDER BY es.attempt_number DESC
+    LIMIT 1
+) latest ON true
+WHERE ep.exam_id = $1;
+
+-- name: GetMyExamResult :many
+-- Kết quả thi của sinh viên: từng bài, điểm, attempt cuối
+SELECT
+    ep.id AS exam_problem_id,
+    ep.problem_id,
+    ep.points AS max_points,
+    p.title AS problem_title,
+    p.difficulty,
+    latest.status,
+    latest.is_correct,
+    CASE WHEN latest.is_correct THEN ep.points ELSE 0 END AS score,
+    latest.attempt_number,
+    latest.execution_time_ms,
+    latest.error_message
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+LEFT JOIN LATERAL (
+    SELECT status, is_correct, attempt_number, execution_time_ms, error_message
+    FROM exam_submissions es
+    WHERE es.exam_id = ep.exam_id
+      AND es.exam_problem_id = ep.id
+      AND es.user_id = $2
+    ORDER BY es.attempt_number DESC
+    LIMIT 1
+) latest ON true
+WHERE ep.exam_id = $1
+ORDER BY ep.sort_order ASC;

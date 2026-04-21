@@ -36,6 +36,21 @@ export const API_ENDPOINTS = {
         importUsers: '/admin/users/import',
         updateRole: (id: number) => `/admin/users/${id}/role`,
         toggleActive: (id: number) => `/admin/users/${id}/toggle-active`,
+        sandboxStatus: '/admin/sandbox/status',
+        sandboxTest: '/admin/sandbox/test',
+    },
+    pdf: {
+        upload: '/lecturer/pdf/upload',
+        status: (id: number) => `/lecturer/pdf/${id}/status`,
+        problems: (id: number) => `/lecturer/pdf/${id}/problems`,
+        updateSolution: (id: number) => `/lecturer/pdf/problems/${id}/solution`,
+    },
+    lecturer: {
+        ungradedSubmissions: (examId: number) => `/lecturer/exams/${examId}/ungraded`,
+        gradingStats: (examId: number) => `/lecturer/exams/${examId}/grading-stats`,
+        viewSubmission: (submissionId: number) => `/lecturer/submissions/${submissionId}`,
+        gradeSubmission: (submissionId: number) => `/lecturer/submissions/${submissionId}/grade`,
+        bulkGrade: '/lecturer/submissions/bulk-grade',
     },
     health: '/health',
 } as const

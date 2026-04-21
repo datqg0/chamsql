@@ -77,6 +77,40 @@ func (q *Queries) AddProblemToExam(ctx context.Context, arg AddProblemToExamPara
 	return i, err
 }
 
+const calcParticipantTotalScore = `-- name: CalcParticipantTotalScore :one
+
+SELECT COALESCE(SUM(
+    CASE WHEN latest.is_correct THEN ep.points ELSE 0 END
+), 0)::float8 AS total_score
+FROM exam_problems ep
+LEFT JOIN LATERAL (
+    SELECT is_correct
+    FROM exam_submissions es
+    WHERE es.exam_id = ep.exam_id
+      AND es.exam_problem_id = ep.id
+      AND es.user_id = $2
+    ORDER BY es.attempt_number DESC
+    LIMIT 1
+) latest ON true
+WHERE ep.exam_id = $1
+`
+
+type CalcParticipantTotalScoreParams struct {
+	ExamID int64 `json:"examId"`
+	UserID int64 `json:"userId"`
+}
+
+// =============================================
+// SCORE CALCULATION
+// =============================================
+// Tính tổng điểm dựa trên attempt cuối cùng của mỗi bài
+func (q *Queries) CalcParticipantTotalScore(ctx context.Context, arg CalcParticipantTotalScoreParams) (float64, error) {
+	row := q.db.QueryRow(ctx, calcParticipantTotalScore, arg.ExamID, arg.UserID)
+	var total_score float64
+	err := row.Scan(&total_score)
+	return total_score, err
+}
+
 const countUserExamSubmissions = `-- name: CountUserExamSubmissions :one
 SELECT COUNT(*) FROM exam_submissions
 WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
@@ -628,6 +662,86 @@ func (q *Queries) GetExamSubmission(ctx context.Context, arg GetExamSubmissionPa
 	return i, err
 }
 
+const getMyExamResult = `-- name: GetMyExamResult :many
+SELECT
+    ep.id AS exam_problem_id,
+    ep.problem_id,
+    ep.points AS max_points,
+    p.title AS problem_title,
+    p.difficulty,
+    latest.status,
+    latest.is_correct,
+    CASE WHEN latest.is_correct THEN ep.points ELSE 0 END AS score,
+    latest.attempt_number,
+    latest.execution_time_ms,
+    latest.error_message
+FROM exam_problems ep
+JOIN problems p ON p.id = ep.problem_id
+LEFT JOIN LATERAL (
+    SELECT status, is_correct, attempt_number, execution_time_ms, error_message
+    FROM exam_submissions es
+    WHERE es.exam_id = ep.exam_id
+      AND es.exam_problem_id = ep.id
+      AND es.user_id = $2
+    ORDER BY es.attempt_number DESC
+    LIMIT 1
+) latest ON true
+WHERE ep.exam_id = $1
+ORDER BY ep.sort_order ASC
+`
+
+type GetMyExamResultParams struct {
+	ExamID int64 `json:"examId"`
+	UserID int64 `json:"userId"`
+}
+
+type GetMyExamResultRow struct {
+	ExamProblemID   int64   `json:"examProblemId"`
+	ProblemID       int64   `json:"problemId"`
+	MaxPoints       *int32  `json:"maxPoints"`
+	ProblemTitle    string  `json:"problemTitle"`
+	Difficulty      string  `json:"difficulty"`
+	Status          string  `json:"status"`
+	IsCorrect       *bool   `json:"isCorrect"`
+	Score           int32   `json:"score"`
+	AttemptNumber   *int32  `json:"attemptNumber"`
+	ExecutionTimeMs *int32  `json:"executionTimeMs"`
+	ErrorMessage    *string `json:"errorMessage"`
+}
+
+// Kết quả thi của sinh viên: từng bài, điểm, attempt cuối
+func (q *Queries) GetMyExamResult(ctx context.Context, arg GetMyExamResultParams) ([]GetMyExamResultRow, error) {
+	rows, err := q.db.Query(ctx, getMyExamResult, arg.ExamID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMyExamResultRow{}
+	for rows.Next() {
+		var i GetMyExamResultRow
+		if err := rows.Scan(
+			&i.ExamProblemID,
+			&i.ProblemID,
+			&i.MaxPoints,
+			&i.ProblemTitle,
+			&i.Difficulty,
+			&i.Status,
+			&i.IsCorrect,
+			&i.Score,
+			&i.AttemptNumber,
+			&i.ExecutionTimeMs,
+			&i.ErrorMessage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getParticipant = `-- name: GetParticipant :one
 SELECT ep.id, ep.exam_id, ep.user_id, ep.started_at, ep.submitted_at, ep.total_score, ep.status, ep.created_at, u.full_name, u.email, u.student_id
 FROM exam_participants ep
@@ -740,6 +854,59 @@ func (q *Queries) GetStudentSubmissionsForProblem(ctx context.Context, arg GetSt
 			&i.Score,
 			&i.AttemptNumber,
 			&i.SubmittedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveExams = `-- name: ListActiveExams :many
+SELECT id, title, created_by, start_time, end_time, duration_minutes, status
+FROM exams
+WHERE start_time <= NOW()
+  AND end_time >= NOW()
+  AND (status = 'published' OR status = 'ongoing')
+ORDER BY end_time ASC
+LIMIT $1 OFFSET $2
+`
+
+type ListActiveExamsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+type ListActiveExamsRow struct {
+	ID              int64              `json:"id"`
+	Title           string             `json:"title"`
+	CreatedBy       int64              `json:"createdBy"`
+	StartTime       pgtype.Timestamptz `json:"startTime"`
+	EndTime         pgtype.Timestamptz `json:"endTime"`
+	DurationMinutes int32              `json:"durationMinutes"`
+	Status          *string            `json:"status"`
+}
+
+func (q *Queries) ListActiveExams(ctx context.Context, arg ListActiveExamsParams) ([]ListActiveExamsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveExams, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveExamsRow{}
+	for rows.Next() {
+		var i ListActiveExamsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.CreatedBy,
+			&i.StartTime,
+			&i.EndTime,
+			&i.DurationMinutes,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -997,6 +1164,58 @@ func (q *Queries) ListExamsByLecturer(ctx context.Context, arg ListExamsByLectur
 			&i.UpdatedAt,
 			&i.ProblemCount,
 			&i.ParticipantCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpiredExams = `-- name: ListExpiredExams :many
+SELECT id, title, created_by, start_time, end_time, duration_minutes, status
+FROM exams
+WHERE end_time < NOW()
+  AND (status = 'published' OR status = 'ongoing')
+ORDER BY end_time DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListExpiredExamsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+type ListExpiredExamsRow struct {
+	ID              int64              `json:"id"`
+	Title           string             `json:"title"`
+	CreatedBy       int64              `json:"createdBy"`
+	StartTime       pgtype.Timestamptz `json:"startTime"`
+	EndTime         pgtype.Timestamptz `json:"endTime"`
+	DurationMinutes int32              `json:"durationMinutes"`
+	Status          *string            `json:"status"`
+}
+
+func (q *Queries) ListExpiredExams(ctx context.Context, arg ListExpiredExamsParams) ([]ListExpiredExamsRow, error) {
+	rows, err := q.db.Query(ctx, listExpiredExams, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExpiredExamsRow{}
+	for rows.Next() {
+		var i ListExpiredExamsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.CreatedBy,
+			&i.StartTime,
+			&i.EndTime,
+			&i.DurationMinutes,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}

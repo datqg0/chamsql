@@ -89,7 +89,7 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
     })
     const topics = Array.isArray(topicsData) ? topicsData : []
 
-    const { data: fullProblem, isLoading: isLoadingFullProblem } = useQuery({
+    const { data: fullProblem, isLoading: _isLoadingFullProblem } = useQuery({
         queryKey: ['problem', problem?.slug],
         queryFn: () => problemsService.getBySlug(problem!.slug),
         enabled: isEdit && open,
@@ -341,7 +341,6 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
                                     <FormLabel>Mô tả <span className="text-destructive">*</span></FormLabel>
                                     <FormControl>
                                         <Editor
-                                            placeholder="Select all employees from the employees table"
                                             value={field.value}
                                             onChange={field.onChange}
                                         />

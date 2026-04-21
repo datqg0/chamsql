@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -124,6 +125,9 @@ func (h *PDFHandler) GetStatus(c *gin.Context) {
 
 // GetProblems godoc
 // @Summary     Get extracted problems from PDF
+// @Description Returns all problems extracted from the uploaded PDF.
+// @Description The problems only contain descriptions (like Codeforces).
+// @Description Instructors must manually add solution queries separately.
 // @Tags        PDF Upload
 // @Produce     json
 // @Param       id path int true "Upload ID"
@@ -136,9 +140,97 @@ func (h *PDFHandler) GetProblems(c *gin.Context) {
 		return
 	}
 
-	// TODO: Implement getting problems from review queue
+	problems, err := h.uploadManager.GetExtractedProblems(c.Request.Context(), uploadID)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+
+	// Convert domain problems to DTOs
+	problemDTOs := make([]dto.ProblemReviewResponse, len(problems))
+	for i, p := range problems {
+		problemDTOs[i] = dto.ProblemReviewResponse{
+			ID:            p.ID,
+			ProblemNumber: p.ProblemNumber,
+			Status:        p.Status,
+			CreatedAt:     p.CreatedAt,
+			UpdatedAt:     p.UpdatedAt,
+		}
+		// Parse the draft to get title, description, etc.
+		var draft struct {
+			Title         string `json:"title"`
+			Description   string `json:"description"`
+			Difficulty    string `json:"difficulty"`
+			SolutionQuery string `json:"solution_query"`
+			InitScript    string `json:"init_script"`
+		}
+		if err := json.Unmarshal(p.ProblemDraft, &draft); err == nil {
+			problemDTOs[i].Title = draft.Title
+			problemDTOs[i].Description = draft.Description
+			problemDTOs[i].Difficulty = draft.Difficulty
+			problemDTOs[i].SolutionQuery = draft.SolutionQuery
+			problemDTOs[i].InitScript = draft.InitScript
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message":   "Get problems endpoint",
 		"upload_id": uploadID,
+		"problems":  problemDTOs,
+		"note":      "PDF contains problem descriptions only. Solution queries must be added manually.",
+	})
+}
+
+// UpdateSolution godoc
+// @Summary     Update problem solution query
+// @Description Instructors manually input the solution query for a problem.
+// @Description Since PDF only contains problem descriptions (like Codeforces),
+// @Description this endpoint allows adding the correct answer/solution.
+// @Tags        PDF Upload
+// @Accept      json
+// @Produce     json
+// @Param       id path int true "Problem Queue ID"
+// @Param       request body dto.UpdateSolutionRequest true "Solution update request"
+// @Success     200 {object} dto.UpdateSolutionResponse
+// @Router      /lecturer/pdf/problems/{id}/solution [put]
+func (h *PDFHandler) UpdateSolution(c *gin.Context) {
+	queueID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid problem ID")
+		return
+	}
+
+	var req dto.UpdateSolutionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	// Update the solution
+	if err := h.uploadManager.UpdateProblemSolution(c.Request.Context(), queueID, req.SolutionQuery); err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+
+	// Optionally confirm the problem if db_type is provided
+	if req.DBType != "" {
+		if err := h.uploadManager.ConfirmProblem(c.Request.Context(), queueID, req.SolutionQuery, req.DBType); err != nil {
+			// Log but don't fail - solution was updated
+			response.Success(c, dto.UpdateSolutionResponse{
+				ID:            queueID,
+				SolutionQuery: req.SolutionQuery,
+				DBType:        req.DBType,
+				Status:        "solution_updated",
+				Message:       "Solution updated but not confirmed: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	response.Success(c, dto.UpdateSolutionResponse{
+		ID:            queueID,
+		SolutionQuery: req.SolutionQuery,
+		DBType:        req.DBType,
+		Status:        "confirmed",
+		Message:       "Solution updated and problem confirmed successfully",
 	})
 }

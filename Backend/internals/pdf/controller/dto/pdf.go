@@ -97,3 +97,20 @@ type ExcelExportResponse struct {
 	RowCount  int       `json:"row_count"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// UpdateSolutionRequest is the request to update problem solution
+// This is used by instructors to manually input the solution query
+// since PDF only contains the problem description (like Codeforces)
+type UpdateSolutionRequest struct {
+	SolutionQuery string `json:"solution_query" binding:"required"`
+	DBType        string `json:"db_type" binding:"required,oneof=postgresql mysql sqlserver"`
+}
+
+// UpdateSolutionResponse is the response after updating solution
+type UpdateSolutionResponse struct {
+	ID            int64  `json:"id"`
+	SolutionQuery string `json:"solution_query"`
+	DBType        string `json:"db_type"`
+	Status        string `json:"status"`
+	Message       string `json:"message"`
+}

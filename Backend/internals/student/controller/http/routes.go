@@ -4,13 +4,15 @@ import (
 	"backend/db"
 	"backend/internals/student/usecase"
 	"backend/pkgs/redis"
+	"backend/pkgs/runner"
+
 	"github.com/gin-gonic/gin"
 )
 
-func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, authMiddleware gin.HandlerFunc) {
-	examUC := usecase.NewStudentExamUseCase(database, cache)
+func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, queryRunner runner.Runner, authMiddleware gin.HandlerFunc) {
+	examUC := usecase.NewStudentExamUseCase(database, cache, queryRunner)
 	resultsUC := usecase.NewStudentResultsUseCase(database)
-	practiceUC := usecase.NewPracticeUseCase(database)
+	practiceUC := usecase.NewPracticeUseCase(database, queryRunner)
 	handler := NewStudentHandler(examUC, resultsUC, practiceUC)
 
 	student := rg.Group("/student")
