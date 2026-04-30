@@ -39,7 +39,7 @@ INSERT INTO submissions (
     execution_time_ms, expected_output, actual_output, error_message, is_correct
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases
+RETURNING id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases, grading_started_at, grading_completed_at, grading_duration_ms
 `
 
 type CreateSubmissionParams struct {
@@ -85,12 +85,15 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		&i.Score,
 		&i.TotalTestCases,
 		&i.PassedTestCases,
+		&i.GradingStartedAt,
+		&i.GradingCompletedAt,
+		&i.GradingDurationMs,
 	)
 	return i, err
 }
 
 const getLatestSubmission = `-- name: GetLatestSubmission :one
-SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases FROM submissions
+SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases, grading_started_at, grading_completed_at, grading_duration_ms FROM submissions
 WHERE user_id = $1 AND problem_id = $2
 ORDER BY submitted_at DESC
 LIMIT 1
@@ -120,35 +123,41 @@ func (q *Queries) GetLatestSubmission(ctx context.Context, arg GetLatestSubmissi
 		&i.Score,
 		&i.TotalTestCases,
 		&i.PassedTestCases,
+		&i.GradingStartedAt,
+		&i.GradingCompletedAt,
+		&i.GradingDurationMs,
 	)
 	return i, err
 }
 
 const getSubmissionByID = `-- name: GetSubmissionByID :one
-SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, s.score, s.total_test_cases, s.passed_test_cases, p.title as problem_title, p.slug as problem_slug
+SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, s.score, s.total_test_cases, s.passed_test_cases, s.grading_started_at, s.grading_completed_at, s.grading_duration_ms, p.title as problem_title, p.slug as problem_slug
 FROM submissions s
 JOIN problems p ON p.id = s.problem_id
 WHERE s.id = $1
 `
 
 type GetSubmissionByIDRow struct {
-	ID              int64              `json:"id"`
-	UserID          int64              `json:"userId"`
-	ProblemID       int64              `json:"problemId"`
-	Code            string             `json:"code"`
-	DatabaseType    string             `json:"databaseType"`
-	Status          string             `json:"status"`
-	ExecutionTimeMs *int32             `json:"executionTimeMs"`
-	ExpectedOutput  []byte             `json:"expectedOutput"`
-	ActualOutput    []byte             `json:"actualOutput"`
-	ErrorMessage    *string            `json:"errorMessage"`
-	IsCorrect       *bool              `json:"isCorrect"`
-	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
-	Score           pgtype.Numeric     `json:"score"`
-	TotalTestCases  *int32             `json:"totalTestCases"`
-	PassedTestCases *int32             `json:"passedTestCases"`
-	ProblemTitle    string             `json:"problemTitle"`
-	ProblemSlug     string             `json:"problemSlug"`
+	ID                 int64              `json:"id"`
+	UserID             int64              `json:"userId"`
+	ProblemID          int64              `json:"problemId"`
+	Code               string             `json:"code"`
+	DatabaseType       string             `json:"databaseType"`
+	Status             string             `json:"status"`
+	ExecutionTimeMs    *int32             `json:"executionTimeMs"`
+	ExpectedOutput     []byte             `json:"expectedOutput"`
+	ActualOutput       []byte             `json:"actualOutput"`
+	ErrorMessage       *string            `json:"errorMessage"`
+	IsCorrect          *bool              `json:"isCorrect"`
+	SubmittedAt        pgtype.Timestamptz `json:"submittedAt"`
+	Score              pgtype.Numeric     `json:"score"`
+	TotalTestCases     *int32             `json:"totalTestCases"`
+	PassedTestCases    *int32             `json:"passedTestCases"`
+	GradingStartedAt   pgtype.Timestamptz `json:"gradingStartedAt"`
+	GradingCompletedAt pgtype.Timestamptz `json:"gradingCompletedAt"`
+	GradingDurationMs  *int32             `json:"gradingDurationMs"`
+	ProblemTitle       string             `json:"problemTitle"`
+	ProblemSlug        string             `json:"problemSlug"`
 }
 
 func (q *Queries) GetSubmissionByID(ctx context.Context, id int64) (GetSubmissionByIDRow, error) {
@@ -170,6 +179,9 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id int64) (GetSubmissio
 		&i.Score,
 		&i.TotalTestCases,
 		&i.PassedTestCases,
+		&i.GradingStartedAt,
+		&i.GradingCompletedAt,
+		&i.GradingDurationMs,
 		&i.ProblemTitle,
 		&i.ProblemSlug,
 	)
@@ -177,7 +189,7 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id int64) (GetSubmissio
 }
 
 const listUserSubmissions = `-- name: ListUserSubmissions :many
-SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, s.score, s.total_test_cases, s.passed_test_cases, p.title as problem_title, p.slug as problem_slug
+SELECT s.id, s.user_id, s.problem_id, s.code, s.database_type, s.status, s.execution_time_ms, s.expected_output, s.actual_output, s.error_message, s.is_correct, s.submitted_at, s.score, s.total_test_cases, s.passed_test_cases, s.grading_started_at, s.grading_completed_at, s.grading_duration_ms, p.title as problem_title, p.slug as problem_slug
 FROM submissions s
 JOIN problems p ON p.id = s.problem_id
 WHERE s.user_id = $1
@@ -192,23 +204,26 @@ type ListUserSubmissionsParams struct {
 }
 
 type ListUserSubmissionsRow struct {
-	ID              int64              `json:"id"`
-	UserID          int64              `json:"userId"`
-	ProblemID       int64              `json:"problemId"`
-	Code            string             `json:"code"`
-	DatabaseType    string             `json:"databaseType"`
-	Status          string             `json:"status"`
-	ExecutionTimeMs *int32             `json:"executionTimeMs"`
-	ExpectedOutput  []byte             `json:"expectedOutput"`
-	ActualOutput    []byte             `json:"actualOutput"`
-	ErrorMessage    *string            `json:"errorMessage"`
-	IsCorrect       *bool              `json:"isCorrect"`
-	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
-	Score           pgtype.Numeric     `json:"score"`
-	TotalTestCases  *int32             `json:"totalTestCases"`
-	PassedTestCases *int32             `json:"passedTestCases"`
-	ProblemTitle    string             `json:"problemTitle"`
-	ProblemSlug     string             `json:"problemSlug"`
+	ID                 int64              `json:"id"`
+	UserID             int64              `json:"userId"`
+	ProblemID          int64              `json:"problemId"`
+	Code               string             `json:"code"`
+	DatabaseType       string             `json:"databaseType"`
+	Status             string             `json:"status"`
+	ExecutionTimeMs    *int32             `json:"executionTimeMs"`
+	ExpectedOutput     []byte             `json:"expectedOutput"`
+	ActualOutput       []byte             `json:"actualOutput"`
+	ErrorMessage       *string            `json:"errorMessage"`
+	IsCorrect          *bool              `json:"isCorrect"`
+	SubmittedAt        pgtype.Timestamptz `json:"submittedAt"`
+	Score              pgtype.Numeric     `json:"score"`
+	TotalTestCases     *int32             `json:"totalTestCases"`
+	PassedTestCases    *int32             `json:"passedTestCases"`
+	GradingStartedAt   pgtype.Timestamptz `json:"gradingStartedAt"`
+	GradingCompletedAt pgtype.Timestamptz `json:"gradingCompletedAt"`
+	GradingDurationMs  *int32             `json:"gradingDurationMs"`
+	ProblemTitle       string             `json:"problemTitle"`
+	ProblemSlug        string             `json:"problemSlug"`
 }
 
 func (q *Queries) ListUserSubmissions(ctx context.Context, arg ListUserSubmissionsParams) ([]ListUserSubmissionsRow, error) {
@@ -236,6 +251,9 @@ func (q *Queries) ListUserSubmissions(ctx context.Context, arg ListUserSubmissio
 			&i.Score,
 			&i.TotalTestCases,
 			&i.PassedTestCases,
+			&i.GradingStartedAt,
+			&i.GradingCompletedAt,
+			&i.GradingDurationMs,
 			&i.ProblemTitle,
 			&i.ProblemSlug,
 		); err != nil {
@@ -250,7 +268,7 @@ func (q *Queries) ListUserSubmissions(ctx context.Context, arg ListUserSubmissio
 }
 
 const listUserSubmissionsForProblem = `-- name: ListUserSubmissionsForProblem :many
-SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases FROM submissions
+SELECT id, user_id, problem_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, submitted_at, score, total_test_cases, passed_test_cases, grading_started_at, grading_completed_at, grading_duration_ms FROM submissions
 WHERE user_id = $1 AND problem_id = $2
 ORDER BY submitted_at DESC
 LIMIT $3
@@ -287,6 +305,9 @@ func (q *Queries) ListUserSubmissionsForProblem(ctx context.Context, arg ListUse
 			&i.Score,
 			&i.TotalTestCases,
 			&i.PassedTestCases,
+			&i.GradingStartedAt,
+			&i.GradingCompletedAt,
+			&i.GradingDurationMs,
 		); err != nil {
 			return nil, err
 		}

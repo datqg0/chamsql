@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"backend/pkg/cronjob"
+	"backend/pkgs/cronjob"
 	"backend/pkgs/logger"
 )
 

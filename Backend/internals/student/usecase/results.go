@@ -15,6 +15,8 @@ type IStudentResultsUseCase interface {
 	GetExamResultDetail(ctx context.Context, examID, userID int64) (*dto.ExamResultDetail, error)
 	GetClassRanking(ctx context.Context, examID int64, req *dto.RankingRequest) (*dto.ClassRankingResponse, error)
 	GetExamAnalytics(ctx context.Context, examID int64) (*dto.ExamAnalytics, error)
+	// GetMySubmissions trả về lịch sử nộp bài luyện tập tổng hợp của sinh viên
+	GetMySubmissions(ctx context.Context, userID int64, page, pageSize int) (*dto.MySubmissionsResponse, error)
 }
 
 type studentResultsUseCase struct {
@@ -49,7 +51,15 @@ func (su *studentResultsUseCase) GetExamResults(ctx context.Context, userID int6
 
 	countQuery := `SELECT COUNT(*) FROM exam_participants ep
 		 JOIN exams e ON e.id = ep.exam_id
-		 WHERE ep.user_id = $1 AND ep.submitted_at IS NOT NULL`
+		 WHERE ep.user_id = $1
+		   AND (
+				ep.submitted_at IS NOT NULL
+				OR EXISTS (
+					SELECT 1
+					FROM exam_submissions es
+					WHERE es.exam_id = ep.exam_id AND es.user_id = ep.user_id
+				)
+		   )`
 	countParams := []interface{}{userID}
 
 	if req.Status != "" {
@@ -89,10 +99,30 @@ func (su *studentResultsUseCase) GetExamResults(ctx context.Context, userID int6
 
 	offset := (req.Page - 1) * req.Limit
 
-	dataQuery := `SELECT ep.exam_id, e.title, ep.total_score, ep.submitted_at, ep.status
+	dataQuery := `SELECT
+			ep.exam_id,
+			e.title,
+			ep.total_score,
+			COALESCE(
+				ep.submitted_at,
+				(
+					SELECT MAX(es.submitted_at)
+					FROM exam_submissions es
+					WHERE es.exam_id = ep.exam_id AND es.user_id = ep.user_id
+				)
+			) AS submitted_at,
+			ep.status
 		 FROM exam_participants ep
 		 JOIN exams e ON e.id = ep.exam_id
-		 WHERE ep.user_id = $1 AND ep.submitted_at IS NOT NULL`
+		 WHERE ep.user_id = $1
+		   AND (
+				ep.submitted_at IS NOT NULL
+				OR EXISTS (
+					SELECT 1
+					FROM exam_submissions es
+					WHERE es.exam_id = ep.exam_id AND es.user_id = ep.user_id
+				)
+		   )`
 	dataParams := []interface{}{userID}
 
 	if req.Status != "" {
@@ -272,4 +302,59 @@ func convertNumericToFloat64(val interface{}) float64 {
 	default:
 		return 0
 	}
+}
+
+// GetMySubmissions trả về toàn bộ lịch sử nộp bài luyện tập của một sinh viên
+func (su *studentResultsUseCase) GetMySubmissions(ctx context.Context, userID int64, page, pageSize int) (*dto.MySubmissionsResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+
+	// Total count
+	var total int64
+	_ = su.db.GetPool().QueryRow(ctx,
+		"SELECT COUNT(*) FROM submissions WHERE user_id = $1",
+		userID,
+	).Scan(&total)
+
+	rows, err := su.db.GetPool().Query(ctx,
+		`SELECT s.id, s.problem_id, p.title, p.slug, s.code, s.status,
+		        s.is_correct, s.execution_time_ms, s.error_message, s.submitted_at
+		 FROM submissions s
+		 JOIN problems p ON p.id = s.problem_id
+		 WHERE s.user_id = $1
+		 ORDER BY s.submitted_at DESC
+		 LIMIT $2 OFFSET $3`,
+		userID, pageSize, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list submissions: %w", err)
+	}
+	defer rows.Close()
+
+	var items []dto.SubmissionRecord
+	for rows.Next() {
+		var r dto.SubmissionRecord
+		var submittedAt time.Time
+		if err := rows.Scan(
+			&r.SubmissionID, &r.ProblemID, &r.ProblemTitle, &r.ProblemSlug,
+			&r.Code, &r.Status, &r.IsCorrect, &r.ExecutionTimeMs,
+			&r.ErrorMessage, &submittedAt,
+		); err != nil {
+			continue
+		}
+		r.SubmittedAt = submittedAt.Format(time.RFC3339)
+		items = append(items, r)
+	}
+
+	return &dto.MySubmissionsResponse{
+		Submissions: items,
+		Total:       total,
+		Page:        page,
+		PageSize:    pageSize,
+	}, nil
 }

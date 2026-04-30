@@ -453,3 +453,35 @@ func (h *StudentHandler) ListPracticeSubmissions(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// GetMySubmissions - Lịch sử nộp bài luyện tập tổng hợp
+// GET /student/submissions?page=1&pageSize=20
+func (h *StudentHandler) GetMySubmissions(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	page := 1
+	pageSize := 20
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := c.Query("pageSize"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	userIDInt, _ := userID.(int64)
+	response, err := h.resultsUseCase.GetMySubmissions(c.Request.Context(), userIDInt, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}

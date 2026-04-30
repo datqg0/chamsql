@@ -27,6 +27,7 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		protected.Use(middlewares.RoleMiddleware("lecturer", "admin"))
 		{
 			protected.POST("", handler.Create)
+			protected.GET("/mine", handler.ListMyProblems)
 			protected.PUT("/:id", handler.Update)
 			protected.DELETE("/:id", handler.Delete)
 		}

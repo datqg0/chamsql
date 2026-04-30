@@ -125,7 +125,54 @@ function SubmissionsPage() {
                 setMyExams(normalized)
             } else {
                 const data = await examsService.getMyExams()
-                setMyExams(Array.isArray(data) ? data : [])
+                const normalized: MyExam[] = (Array.isArray(data) ? data : [])
+                    .map((item: any) => {
+                        // Already in MyExam shape
+                        if (item && item.exam) {
+                            return item as MyExam
+                        }
+
+                        // Fallback: backend may return plain ExamResponse[]
+                        const exam: Exam = {
+                            id: Number(item?.id ?? 0),
+                            title: item?.title ?? 'Kỳ thi',
+                            description: item?.description,
+                            startTime: item?.startTime ?? item?.start_time ?? '',
+                            endTime: item?.endTime ?? item?.end_time ?? '',
+                            durationMinutes: Number(item?.durationMinutes ?? item?.duration_minutes ?? 0),
+                            allowedDatabases: item?.allowedDatabases ?? item?.allowed_databases ?? ['postgresql'],
+                            allowAiAssistance: Boolean(item?.allowAiAssistance ?? item?.allow_ai_assistance),
+                            shuffleProblems: Boolean(item?.shuffleProblems ?? item?.shuffle_problems),
+                            showResultImmediately: Boolean(item?.showResultImmediately ?? item?.show_result_immediately),
+                            maxAttempts: Number(item?.maxAttempts ?? item?.max_attempts ?? 1),
+                            isPublic: Boolean(item?.isPublic ?? item?.is_public),
+                            status: item?.status,
+                            problemCount: item?.problemCount ?? item?.problem_count,
+                        }
+
+                        const rawStatus = String(item?.status ?? '').toLowerCase()
+                        let status: MyExam['status'] = 'not_started'
+                        if (rawStatus === 'in_progress' || rawStatus === 'ongoing') {
+                            status = 'in_progress'
+                        }
+                        if (rawStatus === 'finished' || rawStatus === 'submitted' || rawStatus === 'graded' || rawStatus === 'completed') {
+                            status = 'finished'
+                        }
+
+                        return {
+                            id: exam.id,
+                            exam,
+                            status,
+                            startedAt: item?.startedAt ?? item?.started_at,
+                            finishedAt: item?.finishedAt ?? item?.finished_at,
+                            score: item?.score,
+                            totalPoints: item?.totalPoints ?? item?.total_points,
+                            attemptNumber: item?.attemptNumber ?? item?.attempt_number,
+                        } as MyExam
+                    })
+                    .filter((x) => x.exam?.id > 0)
+
+                setMyExams(normalized)
             }
         } catch (error) {
             console.error('Error loading exams:', error)
@@ -141,13 +188,8 @@ function SubmissionsPage() {
         try {
             const response = await submissionsService.list({ page: 1, pageSize: 20 })
             const data = response as any
-            // Handle various response structures
-            if (data && data.data && Array.isArray(data.data.submissions)) {
-                setSubmissionHistory(data.data.submissions)
-            } else if (data && data.data && Array.isArray(data.data)) {
+            if (Array.isArray(data?.data)) {
                 setSubmissionHistory(data.data)
-            } else if (Array.isArray(data)) {
-                setSubmissionHistory(data)
             } else {
                 setSubmissionHistory([])
             }

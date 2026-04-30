@@ -30,6 +30,10 @@ type IAdminUseCase interface {
 	UpdateUserRole(ctx context.Context, userID int64, role string) error
 	ToggleUserActive(ctx context.Context, userID int64, isActive bool) error
 
+	// Dashboard & Analytics
+	GetDashboard(ctx context.Context) (*dto.DashboardResponse, error)
+	GetPerformanceTimeline(ctx context.Context, userID int64, problemID *int64) (*dto.PerformanceTimelineResponse, error)
+
 	// Permission management methods
 	GrantRoleToUser(ctx context.Context, userID int64, roleID int32, performedBy int64) error
 	RevokeRoleFromUser(ctx context.Context, userID int64, roleID int32) error
@@ -515,6 +519,162 @@ func (u *adminUseCase) GetAuditLog(ctx context.Context, page, pageSize int) (*dt
 		Total: int64(len(logs)),
 		Page:  page,
 		Size:  pageSize,
+	}, nil
+}
+
+// =============================================
+// DASHBOARD & ANALYTICS
+// =============================================
+
+func (u *adminUseCase) GetDashboard(ctx context.Context) (*dto.DashboardResponse, error) {
+	// Try cache first
+	cacheKey := "dashboard:full"
+	if u.cache != nil {
+		var cached dto.DashboardResponse
+		if err := u.cache.Get(cacheKey, &cached); err == nil {
+			return &cached, nil
+		}
+	}
+
+	response := &dto.DashboardResponse{}
+
+	// 1. Overview stats
+	userCount, _ := u.queries.CountUsers(ctx)
+	problemCount, _ := u.queries.CountProblems(ctx)
+	activeUsers, _ := u.queries.GetActiveUsersWeek(ctx)
+	avgSolveTimeRow, _ := u.queries.GetAvgSolveTime(ctx)
+
+	users, _ := u.queries.ListUsers(ctx, models.ListUsersParams{Limit: 10000, Offset: 0})
+	roleCount := make(map[string]int)
+	for _, user := range users {
+		roleCount[user.Role]++
+	}
+
+	response.Overview = dto.OverviewStats{
+		TotalUsers:      userCount,
+		TotalProblems:   problemCount,
+		ActiveUsersWeek: activeUsers,
+		AvgSolveTimeMs:  avgSolveTimeRow,
+		UsersByRole:     roleCount,
+	}
+
+	// 2. Grading stats
+	gradingStats, err := u.queries.GetSystemGradingStats(ctx)
+	if err == nil {
+		var passRate float64
+		if gradingStats.TotalSubmissions > 0 {
+			passRate = float64(gradingStats.TotalCorrect) / float64(gradingStats.TotalSubmissions) * 100
+		}
+
+		// Safe type conversion for min/max grading times
+		var minMs, maxMs int64
+		if v, ok := gradingStats.MinGradingTimeMs.(int64); ok {
+			minMs = v
+		}
+		if v, ok := gradingStats.MaxGradingTimeMs.(int64); ok {
+			maxMs = v
+		}
+
+		response.GradingStats = dto.GradingStats{
+			TotalSubmissions:       gradingStats.TotalSubmissions,
+			AvgGradingTimeMs:       gradingStats.AvgGradingTimeMs,
+			MinGradingTimeMs:       minMs,
+			MaxGradingTimeMs:       maxMs,
+			TotalCorrect:           gradingStats.TotalCorrect,
+			TotalUsers:             gradingStats.TotalUsers,
+			TotalProblemsAttempted: gradingStats.TotalProblemsAttempted,
+			PassRate:               passRate,
+		}
+		response.Overview.TotalSubmissions = gradingStats.TotalSubmissions
+	}
+
+	// 3. Daily submissions (last 30 days)
+	dailyStats, err := u.queries.GetDailySubmissionStats(ctx)
+	if err == nil {
+		response.DailySubmissions = make([]dto.DailySubmission, len(dailyStats))
+		for i, d := range dailyStats {
+			response.DailySubmissions[i] = dto.DailySubmission{
+				Date:             d.SubmitDate.Time.Format("2006-01-02"),
+				TotalSubmissions: d.TotalSubmissions,
+				CorrectCount:     d.CorrectCount,
+				AvgExecutionMs:   d.AvgExecutionMs,
+			}
+		}
+	}
+
+	// 4. Pass rate per problem (top 20)
+	passRates, err := u.queries.GetPassRatePerProblem(ctx, 20)
+	if err == nil {
+		response.PassRates = make([]dto.ProblemPassRate, len(passRates))
+		for i, p := range passRates {
+			response.PassRates[i] = dto.ProblemPassRate{
+				ID:               p.ID,
+				Title:            p.Title,
+				Difficulty:       p.Difficulty,
+				TotalSubmissions: p.TotalSubmissions,
+				CorrectCount:     p.CorrectCount,
+				PassRate:         float64(p.PassRate),
+			}
+		}
+	}
+
+	// 5. Top problems by submissions
+	topProblems, err := u.queries.GetTopProblemsBySubmissions(ctx, 10)
+	if err == nil {
+		response.TopProblems = make([]dto.TopProblem, len(topProblems))
+		for i, p := range topProblems {
+			response.TopProblems[i] = dto.TopProblem{
+				ID:              p.ID,
+				Title:           p.Title,
+				Slug:            p.Slug,
+				Difficulty:      p.Difficulty,
+				SubmissionCount: p.SubmissionCount,
+				UniqueUsers:     p.UniqueUsers,
+			}
+		}
+	}
+
+	// Cache for 10 minutes
+	if u.cache != nil {
+		u.cache.SetWithExpiration(cacheKey, response, 10*time.Minute)
+	}
+
+	return response, nil
+}
+
+func (u *adminUseCase) GetPerformanceTimeline(ctx context.Context, userID int64, problemID *int64) (*dto.PerformanceTimelineResponse, error) {
+	var pid int64
+	if problemID != nil {
+		pid = *problemID
+	}
+
+	timeline, err := u.queries.GetUserPerformanceTimeline(ctx, models.GetUserPerformanceTimelineParams{
+		UserID:  userID,
+		Column2: pid,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]dto.PerformanceTimelineEntry, len(timeline))
+	for i, t := range timeline {
+		var bestMs int64
+		if v, ok := t.BestTimeMs.(int64); ok {
+			bestMs = v
+		}
+		entries[i] = dto.PerformanceTimelineEntry{
+			Date:            t.SubmitDate.Time.Format("2006-01-02"),
+			AvgTimeMs:       t.AvgTimeMs,
+			BestTimeMs:      bestMs,
+			SubmissionCount: t.SubmissionCount,
+			CorrectCount:    t.CorrectCount,
+		}
+	}
+
+	return &dto.PerformanceTimelineResponse{
+		UserID:    userID,
+		ProblemID: problemID,
+		Timeline:  entries,
 	}, nil
 }
 

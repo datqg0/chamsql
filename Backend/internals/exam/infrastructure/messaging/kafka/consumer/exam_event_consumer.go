@@ -164,10 +164,62 @@ func (c *ExamEventConsumer) handleExamTimeExpired(ctx context.Context, envelope 
 		logger.Info("Exam marked as completed: examID=%d", payload.ExamID)
 	}
 
-	// TODO: Additional side effects
-	// - Auto-submit incomplete participants
-	// - Send notifications to students
-	// - Update statistics
+	// Auto-submit tất cả participants còn status = 'in_progress'
+	rows, err := pool.Query(ctx,
+		`SELECT ep.id, ep.user_id
+		 FROM exam_participants ep
+		 WHERE ep.exam_id = $1 AND ep.status = 'in_progress'`,
+		payload.ExamID,
+	)
+	if err != nil {
+		logger.Error("Failed to query in-progress participants for auto-submit: examID=%d, err=%v", payload.ExamID, err)
+		return
+	}
+
+	type participant struct {
+		ID     int64
+		UserID int64
+	}
+	var participants []participant
+	for rows.Next() {
+		var p participant
+		if err := rows.Scan(&p.ID, &p.UserID); err != nil {
+			continue
+		}
+		participants = append(participants, p)
+	}
+	rows.Close()
+
+	for _, p := range participants {
+		// Tính tổng điểm từ các submission đã có
+		var totalScore float64
+		_ = pool.QueryRow(ctx,
+			`SELECT COALESCE(SUM(CAST(score AS FLOAT)), 0)
+			 FROM exam_submissions
+			 WHERE exam_id = $1 AND user_id = $2`,
+			payload.ExamID, p.UserID,
+		).Scan(&totalScore)
+
+		// Update participant: submitted_at = end_time, status = 'submitted', total_score
+		_, err = pool.Exec(ctx,
+			`UPDATE exam_participants
+			 SET status       = 'submitted',
+			     submitted_at = $3,
+			     total_score  = $4,
+			     updated_at   = NOW()
+			 WHERE id = $1 AND status = 'in_progress'`,
+			p.ID, payload.ExamID, payload.EndTime, totalScore,
+		)
+		if err != nil {
+			logger.Error("Failed to auto-submit participant %d (userID=%d): %v", p.ID, p.UserID, err)
+			continue
+		}
+		logger.Info("Auto-submitted participant %d (userID=%d) for exam %d, score=%.2f",
+			p.ID, p.UserID, payload.ExamID, totalScore)
+	}
+
+	logger.Info("handleExamTimeExpired done: examID=%d, auto-submitted %d participants",
+		payload.ExamID, len(participants))
 }
 
 func (c *ExamEventConsumer) handleExamTimeExtended(ctx context.Context, envelope *messaging.EventEnvelope) {

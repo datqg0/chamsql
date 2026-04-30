@@ -6,6 +6,8 @@ type CreateTopicRequest struct {
 	Description string `json:"description" binding:"omitempty,max=500"`
 	Icon        string `json:"icon" binding:"omitempty,max=50"`
 	SortOrder   int    `json:"sortOrder" binding:"omitempty,min=0"`
+	ParentID    *int32 `json:"parentId" binding:"omitempty,min=0"`
+	Level       int    `json:"level" binding:"omitempty,min=0"`
 }
 
 type UpdateTopicRequest struct {
@@ -13,6 +15,8 @@ type UpdateTopicRequest struct {
 	Description *string `json:"description" binding:"omitempty,max=500"`
 	Icon        *string `json:"icon" binding:"omitempty,max=50"`
 	SortOrder   *int    `json:"sortOrder" binding:"omitempty,min=0"`
+	ParentID    *int32  `json:"parentId" binding:"omitempty"`
+	Level       *int    `json:"level" binding:"omitempty,min=0"`
 }
 
 type TopicResponse struct {
@@ -29,3 +33,21 @@ type TopicListResponse struct {
 	Topics []TopicResponse `json:"topics"`
 	Total  int64           `json:"total"`
 }
+
+type TopicTreeNode struct {
+	ID           int32           `json:"id"`
+	Name         string          `json:"name"`
+	Slug         string          `json:"slug"`
+	Description  string          `json:"description,omitempty"`
+	Icon         string          `json:"icon,omitempty"`
+	SortOrder    int             `json:"sortOrder"`
+	Level        int             `json:"level"`
+	ProblemCount int64            `json:"problemCount"`
+	Children     []*TopicTreeNode `json:"children"`
+}
+
+
+type TopicTreeResponse struct {
+	Tree []TopicTreeNode `json:"tree"`
+}
+

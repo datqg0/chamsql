@@ -197,6 +197,29 @@ services:
     networks:
       - sqlexam_network
 
+  # ==========================================
+  # APPLICATION SERVICES
+  # ==========================================
+  sqlexam.api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sqlexam.api
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      sqlexam.postgres:
+        condition: service_healthy
+      sqlexam.redis:
+        condition: service_healthy
+      sqlexam.kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sqlexam_network
+
 # ==========================================
 # NETWORKS & VOLUMES
 # ==========================================

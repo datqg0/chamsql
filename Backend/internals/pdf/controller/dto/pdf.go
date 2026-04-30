@@ -114,3 +114,18 @@ type UpdateSolutionResponse struct {
 	Status        string `json:"status"`
 	Message       string `json:"message"`
 }
+
+// ConfirmProblemRequest is the request to confirm and save a problem to the main table
+type ConfirmProblemRequest struct {
+	// SolutionQuery override — nếu rỗng sẽ dùng solution đã được cập nhật trước đó
+	SolutionQuery string `json:"solution_query"`
+	// DBType: postgresql | mysql | sqlserver (default: postgresql)
+	DBType string `json:"db_type"`
+}
+
+// ConfirmProblemResponse is the response after confirming a problem
+type ConfirmProblemResponse struct {
+	ProblemID int64  `json:"problemId"`
+	Slug      string `json:"slug"`
+	Message   string `json:"message"`
+}

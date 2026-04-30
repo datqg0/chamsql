@@ -159,3 +159,19 @@ func (h *TopicHandler) Delete(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"message": "Topic deleted successfully"})
 }
+
+// GetTree godoc
+// @Summary     Get hierarchical topic tree
+// @Tags        Topics
+// @Produce     json
+// @Success     200 {object} dto.TopicTreeResponse
+// @Router      /topics/tree [get]
+func (h *TopicHandler) GetTree(c *gin.Context) {
+	result, err := h.usecase.GetTree(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+

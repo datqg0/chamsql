@@ -86,6 +86,7 @@ type ProblemListResponse struct {
 type ProblemListQuery struct {
 	TopicID    *int32  `form:"topicId"`
 	Difficulty *string `form:"difficulty"`
+	Search     *string `form:"search"`
 	Page       int     `form:"page,default=1"`
 	PageSize   int     `form:"pageSize,default=20"`
 }

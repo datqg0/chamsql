@@ -38,5 +38,8 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, quer
 		student.GET("/practice/problems/slug/:slug", handler.GetPublicProblemBySlug)
 		student.POST("/practice/problems/:id/submit", handler.PracticeSubmitCode)
 		student.GET("/practice/problems/:id/submissions", handler.ListPracticeSubmissions)
+
+		// GLOBAL SUBMISSION HISTORY
+		student.GET("/submissions", handler.GetMySubmissions)
 	}
 }

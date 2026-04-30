@@ -19,7 +19,7 @@ import (
 	submissionConsumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
 	submissionRepository "backend/internals/submission/repository"
 	submissionUsecase "backend/internals/submission/usecase"
-	"backend/pkg/cronjob"
+	"backend/pkgs/cronjob"
 	"backend/pkgs/ai"
 	"backend/pkgs/jwt"
 	"backend/pkgs/kafka"
@@ -58,6 +58,7 @@ func NewContainer() (*Container, error) {
 		providePDFParser,
 		providePatternMatcher,
 		provideHuggingFaceClient,
+		provideOpenAIClient,
 		provideAISolutionGenerator,
 		provideAITestCaseGenerator,
 		provideAITestCaseValidator,
@@ -171,21 +172,61 @@ func providePatternMatcher() *ai.PatternMatcher {
 }
 
 func provideHuggingFaceClient(cfg *configs.Config) *ai.HuggingFaceClient {
+	if cfg.HuggingFaceAPIKey == "" {
+		return nil
+	}
 	return ai.NewHuggingFaceClient(ai.HuggingFaceConfig{
 		APIKey:  cfg.HuggingFaceAPIKey,
 		Timeout: 30, // 30 seconds
 	})
 }
 
-func provideAISolutionGenerator(
-	patternMatcher *ai.PatternMatcher,
-	huggingfaceClient *ai.HuggingFaceClient,
-) aiUsecase.IAISolutionGenerator {
-	return aiUsecase.NewAISolutionGenerator(patternMatcher, huggingfaceClient)
+func provideOpenAIClient(cfg *configs.Config) *ai.OpenAIClient {
+	if cfg.OpenAIAPIKey == "" {
+		return nil
+	}
+	return ai.NewOpenAIClient(ai.OpenAIConfig{
+		APIKey:  cfg.OpenAIAPIKey,
+		Timeout: 30 * time.Second,
+	})
 }
 
-func provideAITestCaseGenerator(database *db.Database) aiUsecase.IAITestCaseGenerator {
-	return aiUsecase.NewAITestCaseGenerator(database)
+func provideAISolutionGenerator(
+	cfg *configs.Config,
+	patternMatcher *ai.PatternMatcher,
+	hfClient *ai.HuggingFaceClient,
+	oaClient *ai.OpenAIClient,
+) aiUsecase.IAISolutionGenerator {
+	var client ai.LLMClient
+	provider := cfg.AIProvider
+
+	if provider == "openai" && oaClient != nil {
+		client = oaClient
+	} else if hfClient != nil {
+		client = hfClient
+		provider = "huggingface"
+	}
+
+	return aiUsecase.NewAISolutionGenerator(patternMatcher, client, provider)
+}
+
+func provideAITestCaseGenerator(
+	cfg *configs.Config,
+	database *db.Database,
+	hfClient *ai.HuggingFaceClient,
+	oaClient *ai.OpenAIClient,
+) aiUsecase.IAITestCaseGenerator {
+	var client ai.LLMClient
+	provider := cfg.AIProvider
+
+	if provider == "openai" && oaClient != nil {
+		client = oaClient
+	} else if hfClient != nil {
+		client = hfClient
+		provider = "huggingface"
+	}
+
+	return aiUsecase.NewAITestCaseGenerator(database, client, provider)
 }
 
 func provideAITestCaseValidator(database *db.Database) aiUsecase.IAITestCaseValidator {
@@ -212,6 +253,7 @@ func providePDFUploadManager(
 	testCaseGenerator aiUsecase.IAITestCaseGenerator,
 	testCaseValidator aiUsecase.IAITestCaseValidator,
 	aiOrchestrator aiUsecase.IAIOrchestrator,
+	probRepo problemRepo.IProblemRepository,
 ) pdfUsecase.IUploadManager {
 	return pdfUsecase.NewUploadManager(
 		pdfRepo,
@@ -220,6 +262,7 @@ func providePDFUploadManager(
 		testCaseGenerator,
 		testCaseValidator,
 		aiOrchestrator,
+		probRepo,
 	)
 }
 

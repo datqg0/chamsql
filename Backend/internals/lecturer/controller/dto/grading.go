@@ -105,3 +105,25 @@ type BulkGradeResponse struct {
 	Results        []SubmissionGradingResponse `json:"results"`
 	Errors         []GradingErrorResponse      `json:"errors"`
 }
+
+// ExamParticipantResult - Kết quả thi của một sinh viên
+type ExamParticipantResult struct {
+	UserID      int64   `json:"userId"`
+	FullName    string  `json:"fullName"`
+	StudentID   *string `json:"studentId,omitempty"`
+	TotalScore  float64 `json:"totalScore"`
+	Status      string  `json:"status"`
+	StartedAt   *string `json:"startedAt,omitempty"`
+	SubmittedAt *string `json:"submittedAt,omitempty"`
+	Rank        int     `json:"rank"`
+}
+
+// ExamResultsResponse - Toàn bộ kết quả kỳ thi
+type ExamResultsResponse struct {
+	ExamID       int64                   `json:"examId"`
+	TotalCount   int                     `json:"totalCount"`
+	SubmittedCount int                   `json:"submittedCount"`
+	AverageScore float64                 `json:"averageScore"`
+	Participants []ExamParticipantResult `json:"participants"`
+}
+

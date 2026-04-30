@@ -66,6 +66,9 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		// GET /lecturer/exams/:examId/grading-stats - Get grading statistics for exam
 		lecturer.GET("/exams/:examId/grading-stats", handler.GetExamGradingStats)
 
+		// GET /lecturer/exams/:examId/results - Xem kết quả kỳ thi (điểm, rank sinh viên)
+		lecturer.GET("/exams/:examId/results", handler.GetExamResults)
+
 		// POST /lecturer/submissions/bulk-grade - Grade multiple submissions
 		lecturer.POST("/submissions/bulk-grade", handler.BulkGradeSubmissions)
 	}

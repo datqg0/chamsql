@@ -63,5 +63,12 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		// View all permission/role changes
 		// =============================================
 		admin.GET("/audit-log", handler.GetAuditLog)
+
+		// =============================================
+		// DASHBOARD & ANALYTICS ENDPOINTS
+		// For research paper data and system monitoring
+		// =============================================
+		admin.GET("/dashboard", handler.GetDashboard)
+		admin.GET("/timeline", handler.GetPerformanceTimeline)
 	}
 }

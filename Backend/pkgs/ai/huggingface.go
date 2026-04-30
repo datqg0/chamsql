@@ -1,5 +1,8 @@
 package ai
 
+// TODO: Cần API key HuggingFace thực để các hàm này có thể hoạt động.
+// Hiện tại đang sử dụng placeholder API key từ cấu hình.
+
 import (
 	"bytes"
 	"context"
@@ -9,6 +12,12 @@ import (
 	"net/http"
 	"time"
 )
+
+// LLMClient defines the common interface for AI models
+type LLMClient interface {
+	GenerateSolution(ctx context.Context, description string, schemaSQL string) (string, error)
+	GenerateTestCase(ctx context.Context, description string, schemaSQL string, solutionSQL string) (string, error)
+}
 
 // HuggingFaceConfig holds HuggingFace API configuration
 type HuggingFaceConfig struct {

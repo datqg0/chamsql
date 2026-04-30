@@ -85,11 +85,17 @@ func (u *examTimerUseCase) CheckAndExpireExams(ctx context.Context) error {
 
 					if err := u.outboxRepo.PublishEvent(ctx, "chamsql-exam-events-v1", eventEnvelope); err != nil {
 						logger.Error("Failed to publish exam.time_expired event for exam %d: %v", exam.ID, err)
-						// Continue processing other exams even if one fails
-						continue
+						// Vẫn tiếp tục update DB trực tiếp dù Kafka lỗi
+					} else {
+						logger.Info("Published exam.time_expired event for exam %d (ended at %v)", exam.ID, endTime)
 					}
 
-					logger.Info("Published exam.time_expired event for exam %d (ended at %v)", exam.ID, endTime)
+					// Update DB trực tiếp — đảm bảo exam bị đánh dấu completed
+					// dù Kafka down hoặc consumer chưa xử lý kịp
+					if _, dbErr := u.repository.UpdateStatus(ctx, exam.ID, "completed"); dbErr != nil {
+						logger.Error("Failed to directly update exam %d status to completed: %v", exam.ID, dbErr)
+					}
+
 					expiredCount++
 				}
 			}

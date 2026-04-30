@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"backend/db"
 	"backend/sql/models"
@@ -16,12 +15,18 @@ type IProblemRepository interface {
 	List(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error)
 	ListByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error)
 	ListByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error)
-	ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error)
-	ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error)
-	ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error)
+	ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsAdminRow, error)
+	ListByLecturer(ctx context.Context, userID int64, limit, offset int32) ([]models.ListProblemsByLecturerRow, error)
+	ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicAdminRow, error)
+	ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyAdminRow, error)
+	// Search
+	Search(ctx context.Context, query string, limit, offset int32) ([]models.SearchProblemsRow, error)
+	SearchAdmin(ctx context.Context, query string, limit, offset int32) ([]models.SearchProblemsAdminRow, error)
+	CountSearch(ctx context.Context, query string) (int64, error)
 	Update(ctx context.Context, params models.UpdateProblemParams) (*models.Problem, error)
 	Delete(ctx context.Context, id int64) error
 	Count(ctx context.Context) (int64, error)
+	CountAdmin(ctx context.Context) (int64, error)
 	// Test Case Management
 	CreateTestCase(ctx context.Context, params models.CreateProblemTestCaseParams) (*models.ProblemTestCase, error)
 	ListTestCases(ctx context.Context, problemID int64) ([]models.ProblemTestCase, error)
@@ -101,19 +106,56 @@ func (r *problemRepository) ListByDifficulty(ctx context.Context, difficulty str
 	})
 }
 
-// NOTE: ListAdmin queries not yet implemented - returns error until schema is ready
-func (r *problemRepository) ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsRow, error) {
-	return nil, errors.New("ListAdmin queries not yet implemented")
+func (r *problemRepository) ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsAdminRow, error) {
+	return r.queries.ListProblemsAdmin(ctx, models.ListProblemsAdminParams{
+		Limit:  limit,
+		Offset: offset,
+	})
 }
 
-// NOTE: ListAdminByTopic queries not yet implemented - returns error until schema is ready
-func (r *problemRepository) ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error) {
-	return nil, errors.New("ListAdminByTopic queries not yet implemented")
+func (r *problemRepository) ListByLecturer(ctx context.Context, userID int64, limit, offset int32) ([]models.ListProblemsByLecturerRow, error) {
+	lecturerID := &userID
+	return r.queries.ListProblemsByLecturer(ctx, models.ListProblemsByLecturerParams{
+		CreatedBy: lecturerID,
+		Limit:     limit,
+		Offset:    offset,
+	})
 }
 
-// NOTE: ListAdminByDifficulty queries not yet implemented - returns error until schema is ready
-func (r *problemRepository) ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error) {
-	return nil, errors.New("ListAdminByDifficulty queries not yet implemented")
+func (r *problemRepository) ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicAdminRow, error) {
+	return r.queries.ListProblemsByTopicAdmin(ctx, models.ListProblemsByTopicAdminParams{
+		TopicID: &topicID,
+		Limit:   limit,
+		Offset:  offset,
+	})
+}
+
+func (r *problemRepository) ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyAdminRow, error) {
+	return r.queries.ListProblemsByDifficultyAdmin(ctx, models.ListProblemsByDifficultyAdminParams{
+		Difficulty: difficulty,
+		Limit:      limit,
+		Offset:     offset,
+	})
+}
+
+func (r *problemRepository) Search(ctx context.Context, query string, limit, offset int32) ([]models.SearchProblemsRow, error) {
+	return r.queries.SearchProblems(ctx, models.SearchProblemsParams{
+		SearchQuery: query,
+		Limit:       limit,
+		Offset:      offset,
+	})
+}
+
+func (r *problemRepository) SearchAdmin(ctx context.Context, query string, limit, offset int32) ([]models.SearchProblemsAdminRow, error) {
+	return r.queries.SearchProblemsAdmin(ctx, models.SearchProblemsAdminParams{
+		SearchQuery: query,
+		Limit:       limit,
+		Offset:      offset,
+	})
+}
+
+func (r *problemRepository) CountSearch(ctx context.Context, query string) (int64, error) {
+	return r.queries.CountSearchProblems(ctx, query)
 }
 
 func (r *problemRepository) Update(ctx context.Context, params models.UpdateProblemParams) (*models.Problem, error) {
@@ -130,6 +172,10 @@ func (r *problemRepository) Delete(ctx context.Context, id int64) error {
 
 func (r *problemRepository) Count(ctx context.Context) (int64, error) {
 	return r.queries.CountProblems(ctx)
+}
+
+func (r *problemRepository) CountAdmin(ctx context.Context) (int64, error) {
+	return r.queries.CountProblemsAdmin(ctx)
 }
 
 func (r *problemRepository) CreateTestCase(ctx context.Context, params models.CreateProblemTestCaseParams) (*models.ProblemTestCase, error) {
@@ -158,8 +204,8 @@ func (r *problemRepository) UpsertProgress(ctx context.Context, userID, problemI
 
 func (r *problemRepository) MarkProblemSolved(ctx context.Context, userID, problemID int64, bestTimeMs int32) error {
 	_, err := r.queries.MarkProblemSolved(ctx, models.MarkProblemSolvedParams{
-		UserID:    userID,
-		ProblemID: problemID,
+		UserID:     userID,
+		ProblemID:  problemID,
 		BestTimeMs: &bestTimeMs,
 	})
 	return err

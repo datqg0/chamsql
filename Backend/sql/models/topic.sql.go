@@ -7,6 +7,8 @@ package models
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countProblemsPerTopic = `-- name: CountProblemsPerTopic :many
@@ -51,9 +53,9 @@ func (q *Queries) CountProblemsPerTopic(ctx context.Context) ([]CountProblemsPer
 }
 
 const createTopic = `-- name: CreateTopic :one
-INSERT INTO topics (name, slug, description, icon, sort_order)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, name, slug, description, icon, sort_order, is_active, created_at
+INSERT INTO topics (name, slug, description, icon, sort_order, parent_id, level)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, name, slug, description, icon, sort_order, is_active, created_at, parent_id, level
 `
 
 type CreateTopicParams struct {
@@ -62,6 +64,8 @@ type CreateTopicParams struct {
 	Description *string `json:"description"`
 	Icon        *string `json:"icon"`
 	SortOrder   *int32  `json:"sortOrder"`
+	ParentID    *int32  `json:"parentId"`
+	Level       *int32  `json:"level"`
 }
 
 func (q *Queries) CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic, error) {
@@ -71,6 +75,8 @@ func (q *Queries) CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic
 		arg.Description,
 		arg.Icon,
 		arg.SortOrder,
+		arg.ParentID,
+		arg.Level,
 	)
 	var i Topic
 	err := row.Scan(
@@ -82,6 +88,8 @@ func (q *Queries) CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic
 		&i.SortOrder,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.ParentID,
+		&i.Level,
 	)
 	return i, err
 }
@@ -96,7 +104,7 @@ func (q *Queries) DeleteTopic(ctx context.Context, id int32) error {
 }
 
 const getTopicByID = `-- name: GetTopicByID :one
-SELECT id, name, slug, description, icon, sort_order, is_active, created_at FROM topics WHERE id = $1
+SELECT id, name, slug, description, icon, sort_order, is_active, created_at, parent_id, level FROM topics WHERE id = $1
 `
 
 func (q *Queries) GetTopicByID(ctx context.Context, id int32) (Topic, error) {
@@ -111,12 +119,14 @@ func (q *Queries) GetTopicByID(ctx context.Context, id int32) (Topic, error) {
 		&i.SortOrder,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.ParentID,
+		&i.Level,
 	)
 	return i, err
 }
 
 const getTopicBySlug = `-- name: GetTopicBySlug :one
-SELECT id, name, slug, description, icon, sort_order, is_active, created_at FROM topics WHERE slug = $1
+SELECT id, name, slug, description, icon, sort_order, is_active, created_at, parent_id, level FROM topics WHERE slug = $1
 `
 
 func (q *Queries) GetTopicBySlug(ctx context.Context, slug string) (Topic, error) {
@@ -131,12 +141,197 @@ func (q *Queries) GetTopicBySlug(ctx context.Context, slug string) (Topic, error
 		&i.SortOrder,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.ParentID,
+		&i.Level,
 	)
 	return i, err
 }
 
+const getTopicChildren = `-- name: GetTopicChildren :many
+SELECT t.id, t.name, t.slug, t.description, t.icon, t.sort_order,
+       t.parent_id, t.level, t.is_active, t.created_at,
+       COUNT(p.id) as problem_count
+FROM topics t
+LEFT JOIN problems p ON p.topic_id = t.id AND p.is_active = TRUE
+WHERE t.parent_id = $1 AND t.is_active = TRUE
+GROUP BY t.id, t.name, t.slug, t.description, t.icon, t.sort_order,
+         t.parent_id, t.level, t.is_active, t.created_at
+ORDER BY t.sort_order ASC
+`
+
+type GetTopicChildrenRow struct {
+	ID           int32              `json:"id"`
+	Name         string             `json:"name"`
+	Slug         string             `json:"slug"`
+	Description  *string            `json:"description"`
+	Icon         *string            `json:"icon"`
+	SortOrder    *int32             `json:"sortOrder"`
+	ParentID     *int32             `json:"parentId"`
+	Level        *int32             `json:"level"`
+	IsActive     *bool              `json:"isActive"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
+	ProblemCount int64              `json:"problemCount"`
+}
+
+func (q *Queries) GetTopicChildren(ctx context.Context, parentID *int32) ([]GetTopicChildrenRow, error) {
+	rows, err := q.db.Query(ctx, getTopicChildren, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopicChildrenRow{}
+	for rows.Next() {
+		var i GetTopicChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Description,
+			&i.Icon,
+			&i.SortOrder,
+			&i.ParentID,
+			&i.Level,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.ProblemCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopicTree = `-- name: GetTopicTree :many
+
+SELECT t.id, t.name, t.slug, t.description, t.icon, t.sort_order,
+       t.parent_id, t.level, t.is_active, t.created_at,
+       p.name as parent_name, p.slug as parent_slug,
+       COUNT(pr.id) as problem_count
+FROM topics t
+LEFT JOIN topics p ON p.id = t.parent_id
+LEFT JOIN problems pr ON pr.topic_id = t.id AND pr.is_active = TRUE
+WHERE t.is_active = TRUE
+GROUP BY t.id, t.name, t.slug, t.description, t.icon, t.sort_order,
+         t.parent_id, t.level, t.is_active, t.created_at,
+         p.name, p.slug
+ORDER BY t.parent_id NULLS FIRST, t.sort_order ASC, t.name ASC
+`
+
+type GetTopicTreeRow struct {
+	ID           int32              `json:"id"`
+	Name         string             `json:"name"`
+	Slug         string             `json:"slug"`
+	Description  *string            `json:"description"`
+	Icon         *string            `json:"icon"`
+	SortOrder    *int32             `json:"sortOrder"`
+	ParentID     *int32             `json:"parentId"`
+	Level        *int32             `json:"level"`
+	IsActive     *bool              `json:"isActive"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
+	ParentName   *string            `json:"parentName"`
+	ParentSlug   *string            `json:"parentSlug"`
+	ProblemCount int64              `json:"problemCount"`
+}
+
+// =============================================
+// TOPIC TREE QUERIES
+// =============================================
+func (q *Queries) GetTopicTree(ctx context.Context) ([]GetTopicTreeRow, error) {
+	rows, err := q.db.Query(ctx, getTopicTree)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopicTreeRow{}
+	for rows.Next() {
+		var i GetTopicTreeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Description,
+			&i.Icon,
+			&i.SortOrder,
+			&i.ParentID,
+			&i.Level,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.ParentName,
+			&i.ParentSlug,
+			&i.ProblemCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopicWithAncestors = `-- name: GetTopicWithAncestors :many
+WITH RECURSIVE topic_tree AS (
+  SELECT t.id, t.name, t.slug, t.description, t.icon, t.sort_order, t.parent_id, t.level, t.is_active, t.created_at
+  FROM topics t WHERE t.id = $1
+  UNION ALL
+  SELECT t2.id, t2.name, t2.slug, t2.description, t2.icon, t2.sort_order, t2.parent_id, t2.level, t2.is_active, t2.created_at
+  FROM topics t2
+  JOIN topic_tree tt ON t2.id = tt.parent_id
+)
+SELECT id, name, slug, description, icon, sort_order, parent_id, level, is_active, created_at FROM topic_tree
+`
+
+type GetTopicWithAncestorsRow struct {
+	ID          int32              `json:"id"`
+	Name        string             `json:"name"`
+	Slug        string             `json:"slug"`
+	Description *string            `json:"description"`
+	Icon        *string            `json:"icon"`
+	SortOrder   *int32             `json:"sortOrder"`
+	ParentID    *int32             `json:"parentId"`
+	Level       *int32             `json:"level"`
+	IsActive    *bool              `json:"isActive"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+}
+
+func (q *Queries) GetTopicWithAncestors(ctx context.Context, id int32) ([]GetTopicWithAncestorsRow, error) {
+	rows, err := q.db.Query(ctx, getTopicWithAncestors, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopicWithAncestorsRow{}
+	for rows.Next() {
+		var i GetTopicWithAncestorsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Description,
+			&i.Icon,
+			&i.SortOrder,
+			&i.ParentID,
+			&i.Level,
+			&i.IsActive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTopics = `-- name: ListTopics :many
-SELECT id, name, slug, description, icon, sort_order, is_active, created_at FROM topics 
+SELECT id, name, slug, description, icon, sort_order, is_active, created_at, parent_id, level FROM topics 
 WHERE is_active = TRUE
 ORDER BY sort_order ASC, name ASC
 `
@@ -159,6 +354,8 @@ func (q *Queries) ListTopics(ctx context.Context) ([]Topic, error) {
 			&i.SortOrder,
 			&i.IsActive,
 			&i.CreatedAt,
+			&i.ParentID,
+			&i.Level,
 		); err != nil {
 			return nil, err
 		}
@@ -175,9 +372,11 @@ UPDATE topics SET
     name = COALESCE($2, name),
     description = COALESCE($3, description),
     icon = COALESCE($4, icon),
-    sort_order = COALESCE($5, sort_order)
+    sort_order = COALESCE($5, sort_order),
+    parent_id = COALESCE($6, parent_id),
+    level = COALESCE($7, level)
 WHERE id = $1
-RETURNING id, name, slug, description, icon, sort_order, is_active, created_at
+RETURNING id, name, slug, description, icon, sort_order, is_active, created_at, parent_id, level
 `
 
 type UpdateTopicParams struct {
@@ -186,6 +385,8 @@ type UpdateTopicParams struct {
 	Description *string `json:"description"`
 	Icon        *string `json:"icon"`
 	SortOrder   *int32  `json:"sortOrder"`
+	ParentID    *int32  `json:"parentId"`
+	Level       *int32  `json:"level"`
 }
 
 func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic, error) {
@@ -195,6 +396,8 @@ func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic
 		arg.Description,
 		arg.Icon,
 		arg.SortOrder,
+		arg.ParentID,
+		arg.Level,
 	)
 	var i Topic
 	err := row.Scan(
@@ -206,6 +409,8 @@ func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic
 		&i.SortOrder,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.ParentID,
+		&i.Level,
 	)
 	return i, err
 }

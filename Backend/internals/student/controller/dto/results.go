@@ -100,3 +100,26 @@ type RankingRequest struct {
 	Page  int32 `form:"page" binding:"min=1"`
 	Limit int32 `form:"limit" binding:"min=1,max=100"`
 }
+
+// SubmissionRecord - một lần nộp bài luyện tập
+type SubmissionRecord struct {
+	SubmissionID    int64   `json:"submissionId"`
+	ProblemID       int64   `json:"problemId"`
+	ProblemTitle    string  `json:"problemTitle"`
+	ProblemSlug     string  `json:"problemSlug"`
+	Code            string  `json:"code"`
+	Status          string  `json:"status"`
+	IsCorrect       *bool   `json:"isCorrect"`
+	ExecutionTimeMs *int32  `json:"executionTimeMs"`
+	ErrorMessage    *string `json:"errorMessage,omitempty"`
+	SubmittedAt     string  `json:"submittedAt"`
+}
+
+// MySubmissionsResponse - lịch sử nộp bài luyện tập của sinh viên
+type MySubmissionsResponse struct {
+	Submissions []SubmissionRecord `json:"submissions"`
+	Total       int64              `json:"total"`
+	Page        int                `json:"page"`
+	PageSize    int                `json:"pageSize"`
+}
+

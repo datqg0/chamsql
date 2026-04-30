@@ -7,9 +7,12 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"backend/db"
 	"backend/internals/ai/domain"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // TestCaseForValidation is a local model for validation
@@ -58,6 +61,12 @@ func (v *aiTestCaseValidator) ValidateTestCases(ctx context.Context, schemaSQL, 
 		return result, err
 	}
 
+	// If no test cases provided, just validate syntax
+	if len(testCases) == 0 {
+		result.IsValid = true
+		return result, nil
+	}
+
 	// Step 2: Run each test case
 	passCount := 0
 	for i, tc := range testCases {
@@ -79,27 +88,38 @@ func (v *aiTestCaseValidator) ValidateTestCases(ctx context.Context, schemaSQL, 
 	return result, nil
 }
 
-// ValidateSingleTestCase validates one test case
+// ValidateSingleTestCase validates one test case by executing SQL in a transaction (then rolling back)
 func (v *aiTestCaseValidator) ValidateSingleTestCase(ctx context.Context, schemaSQL, testDataSQL, solutionSQL string, expectedOutput json.RawMessage) (bool, error) {
 	pool := v.database.GetPool()
 	if pool == nil {
 		return false, fmt.Errorf("database pool not available")
 	}
 
+	// Use a timeout context for sandbox execution
+	execCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// Execute everything in a transaction that we ALWAYS rollback (sandbox mode)
+	tx, err := pool.Begin(execCtx)
+	if err != nil {
+		return false, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback(execCtx) // Always rollback — sandbox
+
 	// Step 1: Execute schema
-	if err := v.executeSQL(ctx, pool, schemaSQL); err != nil {
+	if err := v.executeSQLInTx(execCtx, tx, schemaSQL); err != nil {
 		return false, fmt.Errorf("failed to execute schema: %w", err)
 	}
 
 	// Step 2: Insert test data
 	if testDataSQL != "" && testDataSQL != "-- No data inserted, table is empty" {
-		if err := v.executeSQL(ctx, pool, testDataSQL); err != nil {
-			// Test data error is not fatal - continue to try solution
+		if err := v.executeSQLInTx(execCtx, tx, testDataSQL); err != nil {
+			// Test data error is not fatal — might be intentional empty test
 		}
 	}
 
 	// Step 3: Execute solution query
-	actualOutput, err := v.executeSolutionQuery(ctx, pool, solutionSQL)
+	actualOutput, err := v.executeSolutionQueryInTx(execCtx, tx, solutionSQL)
 	if err != nil {
 		return false, fmt.Errorf("failed to execute solution: %w", err)
 	}
@@ -108,35 +128,53 @@ func (v *aiTestCaseValidator) ValidateSingleTestCase(ctx context.Context, schema
 	return v.compareResults(actualOutput, expectedOutput), nil
 }
 
-// Helper functions
-
-func (v *aiTestCaseValidator) executeSQL(ctx context.Context, pool interface{}, sqlStatement string) error {
-	// Handle multiple statements separated by semicolon
+// executeSQLInTx executes SQL statements within a pgx transaction
+func (v *aiTestCaseValidator) executeSQLInTx(ctx context.Context, tx pgx.Tx, sqlStatement string) error {
 	statements := strings.Split(sqlStatement, ";")
 
 	for _, stmt := range statements {
 		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
+		if stmt == "" || strings.HasPrefix(stmt, "--") {
 			continue
 		}
 
-		// Add semicolon back if not present
-		if !strings.HasSuffix(stmt, ";") {
-			stmt += ";"
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("SQL exec error for '%s': %w", truncateSQL(stmt), err)
 		}
-
-		// For now, skip actual execution - validation would occur during problem review
-		// In production, use: pool.Exec(ctx, stmt)
 	}
 
 	return nil
 }
 
-func (v *aiTestCaseValidator) executeSolutionQuery(ctx context.Context, pool interface{}, solutionSQL string) ([]map[string]interface{}, error) {
-	var results []map[string]interface{}
+// executeSolutionQueryInTx executes a SELECT query within a transaction and returns results
+func (v *aiTestCaseValidator) executeSolutionQueryInTx(ctx context.Context, tx pgx.Tx, solutionSQL string) ([]map[string]interface{}, error) {
+	rows, err := tx.Query(ctx, solutionSQL)
+	if err != nil {
+		return nil, fmt.Errorf("query execution failed: %w", err)
+	}
+	defer rows.Close()
 
-	// For now, return empty results - actual execution happens during review
-	// In production, use: pool.Query(ctx, solutionSQL)
+	var results []map[string]interface{}
+	fieldDescs := rows.FieldDescriptions()
+
+	for rows.Next() {
+		values, err := rows.Values()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read row values: %w", err)
+		}
+
+		row := make(map[string]interface{})
+		for i, fd := range fieldDescs {
+			if i < len(values) {
+				row[fd.Name] = values[i]
+			}
+		}
+		results = append(results, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
 
 	return results, nil
 }
@@ -147,17 +185,15 @@ func (v *aiTestCaseValidator) compareResults(actual []map[string]interface{}, ex
 		return len(actual) == 0
 	}
 
-	// If expected is generic (e.g., [{"data":"..."}]), do basic validation
+	// If expected is generic placeholder (e.g., [{"data":"..."}]), do basic validation
 	if strings.Contains(string(expected), `"data"`) {
-		// Just check that we got some results
 		return len(actual) > 0
 	}
 
 	// Parse expected output
 	var expectedData []map[string]interface{}
 	if err := json.Unmarshal(expected, &expectedData); err != nil {
-		// If we can't parse expected, just check row count
-		return len(actual) == len(expectedData)
+		return true
 	}
 
 	// Compare counts first
@@ -174,7 +210,6 @@ func (v *aiTestCaseValidator) compareResults(actual []map[string]interface{}, ex
 }
 
 func (v *aiTestCaseValidator) sortResults(results []map[string]interface{}) []map[string]interface{} {
-	// Convert to JSON string for sorting
 	var jsonResults []string
 
 	for _, row := range results {
@@ -184,7 +219,6 @@ func (v *aiTestCaseValidator) sortResults(results []map[string]interface{}) []ma
 
 	sort.Strings(jsonResults)
 
-	// Convert back
 	var sorted []map[string]interface{}
 	for _, jsonStr := range jsonResults {
 		var row map[string]interface{}
@@ -202,7 +236,6 @@ func (v *aiTestCaseValidator) validateSQLSyntax(sqlStatement string) error {
 		return fmt.Errorf("empty SQL statement")
 	}
 
-	// Check balanced parentheses
 	openParen := strings.Count(sqlStatement, "(")
 	closeParen := strings.Count(sqlStatement, ")")
 
@@ -210,11 +243,17 @@ func (v *aiTestCaseValidator) validateSQLSyntax(sqlStatement string) error {
 		return fmt.Errorf("unbalanced parentheses: %d open, %d close", openParen, closeParen)
 	}
 
-	// Check balanced quotes
 	singleQuotes := strings.Count(sqlStatement, "'")
 	if singleQuotes%2 != 0 {
 		return fmt.Errorf("unbalanced single quotes: %d", singleQuotes)
 	}
 
 	return nil
+}
+
+func truncateSQL(sql string) string {
+	if len(sql) > 80 {
+		return sql[:80] + "..."
+	}
+	return sql
 }

@@ -1,5 +1,8 @@
 package ai
 
+// TODO: Đây là fallback mechanism sử dụng pattern matching khi AI API không khả dụng.
+// Trong môi trường sản xuất, nên ưu tiên sử dụng HuggingFaceClient hoặc OpenAI.
+
 import (
 	"fmt"
 	"regexp"

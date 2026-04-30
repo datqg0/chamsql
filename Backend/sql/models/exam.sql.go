@@ -205,7 +205,7 @@ INSERT INTO exam_submissions (
     is_correct, score, attempt_number
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at
+RETURNING id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, grading_started_at, grading_completed_at, grading_duration_ms
 `
 
 type CreateExamSubmissionParams struct {
@@ -260,6 +260,9 @@ func (q *Queries) CreateExamSubmission(ctx context.Context, arg CreateExamSubmis
 		&i.Score,
 		&i.AttemptNumber,
 		&i.SubmittedAt,
+		&i.GradingStartedAt,
+		&i.GradingCompletedAt,
+		&i.GradingDurationMs,
 	)
 	return i, err
 }
@@ -288,7 +291,25 @@ type CreateExamSubmissionForStudentParams struct {
 	DatabaseType  string `json:"databaseType"`
 }
 
-func (q *Queries) CreateExamSubmissionForStudent(ctx context.Context, arg CreateExamSubmissionForStudentParams) (ExamSubmission, error) {
+type CreateExamSubmissionForStudentRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+}
+
+func (q *Queries) CreateExamSubmissionForStudent(ctx context.Context, arg CreateExamSubmissionForStudentParams) (CreateExamSubmissionForStudentRow, error) {
 	row := q.db.QueryRow(ctx, createExamSubmissionForStudent,
 		arg.ExamID,
 		arg.ExamProblemID,
@@ -296,7 +317,7 @@ func (q *Queries) CreateExamSubmissionForStudent(ctx context.Context, arg Create
 		arg.Code,
 		arg.DatabaseType,
 	)
-	var i ExamSubmission
+	var i CreateExamSubmissionForStudentRow
 	err := row.Scan(
 		&i.ID,
 		&i.ExamID,
@@ -627,7 +648,7 @@ func (q *Queries) GetExamResults(ctx context.Context, examID int64) ([]GetExamRe
 }
 
 const getExamSubmission = `-- name: GetExamSubmission :one
-SELECT id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at FROM exam_submissions
+SELECT id, exam_id, exam_problem_id, user_id, code, database_type, status, execution_time_ms, expected_output, actual_output, error_message, is_correct, score, attempt_number, submitted_at, grading_started_at, grading_completed_at, grading_duration_ms FROM exam_submissions
 WHERE exam_id = $1 AND exam_problem_id = $2 AND user_id = $3
 ORDER BY submitted_at DESC
 LIMIT 1
@@ -658,6 +679,9 @@ func (q *Queries) GetExamSubmission(ctx context.Context, arg GetExamSubmissionPa
 		&i.Score,
 		&i.AttemptNumber,
 		&i.SubmittedAt,
+		&i.GradingStartedAt,
+		&i.GradingCompletedAt,
+		&i.GradingDurationMs,
 	)
 	return i, err
 }
@@ -829,15 +853,33 @@ type GetStudentSubmissionsForProblemParams struct {
 	UserID        int64 `json:"userId"`
 }
 
-func (q *Queries) GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]ExamSubmission, error) {
+type GetStudentSubmissionsForProblemRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+}
+
+func (q *Queries) GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]GetStudentSubmissionsForProblemRow, error) {
 	rows, err := q.db.Query(ctx, getStudentSubmissionsForProblem, arg.ExamID, arg.ExamProblemID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ExamSubmission{}
+	items := []GetStudentSubmissionsForProblemRow{}
 	for rows.Next() {
-		var i ExamSubmission
+		var i GetStudentSubmissionsForProblemRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExamID,
@@ -1303,7 +1345,7 @@ func (q *Queries) ListPublicExams(ctx context.Context, arg ListPublicExamsParams
 }
 
 const listUserExamSubmissions = `-- name: ListUserExamSubmissions :many
-SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, ep.points as max_points, p.title as problem_title
+SELECT es.id, es.exam_id, es.exam_problem_id, es.user_id, es.code, es.database_type, es.status, es.execution_time_ms, es.expected_output, es.actual_output, es.error_message, es.is_correct, es.score, es.attempt_number, es.submitted_at, es.grading_started_at, es.grading_completed_at, es.grading_duration_ms, ep.points as max_points, p.title as problem_title
 FROM exam_submissions es
 JOIN exam_problems ep ON ep.id = es.exam_problem_id
 JOIN problems p ON p.id = ep.problem_id
@@ -1317,23 +1359,26 @@ type ListUserExamSubmissionsParams struct {
 }
 
 type ListUserExamSubmissionsRow struct {
-	ID              int64              `json:"id"`
-	ExamID          int64              `json:"examId"`
-	ExamProblemID   int64              `json:"examProblemId"`
-	UserID          int64              `json:"userId"`
-	Code            string             `json:"code"`
-	DatabaseType    string             `json:"databaseType"`
-	Status          string             `json:"status"`
-	ExecutionTimeMs *int32             `json:"executionTimeMs"`
-	ExpectedOutput  []byte             `json:"expectedOutput"`
-	ActualOutput    []byte             `json:"actualOutput"`
-	ErrorMessage    *string            `json:"errorMessage"`
-	IsCorrect       *bool              `json:"isCorrect"`
-	Score           pgtype.Numeric     `json:"score"`
-	AttemptNumber   *int32             `json:"attemptNumber"`
-	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
-	MaxPoints       *int32             `json:"maxPoints"`
-	ProblemTitle    string             `json:"problemTitle"`
+	ID                 int64              `json:"id"`
+	ExamID             int64              `json:"examId"`
+	ExamProblemID      int64              `json:"examProblemId"`
+	UserID             int64              `json:"userId"`
+	Code               string             `json:"code"`
+	DatabaseType       string             `json:"databaseType"`
+	Status             string             `json:"status"`
+	ExecutionTimeMs    *int32             `json:"executionTimeMs"`
+	ExpectedOutput     []byte             `json:"expectedOutput"`
+	ActualOutput       []byte             `json:"actualOutput"`
+	ErrorMessage       *string            `json:"errorMessage"`
+	IsCorrect          *bool              `json:"isCorrect"`
+	Score              pgtype.Numeric     `json:"score"`
+	AttemptNumber      *int32             `json:"attemptNumber"`
+	SubmittedAt        pgtype.Timestamptz `json:"submittedAt"`
+	GradingStartedAt   pgtype.Timestamptz `json:"gradingStartedAt"`
+	GradingCompletedAt pgtype.Timestamptz `json:"gradingCompletedAt"`
+	GradingDurationMs  *int32             `json:"gradingDurationMs"`
+	MaxPoints          *int32             `json:"maxPoints"`
+	ProblemTitle       string             `json:"problemTitle"`
 }
 
 func (q *Queries) ListUserExamSubmissions(ctx context.Context, arg ListUserExamSubmissionsParams) ([]ListUserExamSubmissionsRow, error) {
@@ -1361,6 +1406,9 @@ func (q *Queries) ListUserExamSubmissions(ctx context.Context, arg ListUserExamS
 			&i.Score,
 			&i.AttemptNumber,
 			&i.SubmittedAt,
+			&i.GradingStartedAt,
+			&i.GradingCompletedAt,
+			&i.GradingDurationMs,
 			&i.MaxPoints,
 			&i.ProblemTitle,
 		); err != nil {
@@ -1742,7 +1790,25 @@ type UpdateExamSubmissionWithResultParams struct {
 	Score           pgtype.Numeric `json:"score"`
 }
 
-func (q *Queries) UpdateExamSubmissionWithResult(ctx context.Context, arg UpdateExamSubmissionWithResultParams) (ExamSubmission, error) {
+type UpdateExamSubmissionWithResultRow struct {
+	ID              int64              `json:"id"`
+	ExamID          int64              `json:"examId"`
+	ExamProblemID   int64              `json:"examProblemId"`
+	UserID          int64              `json:"userId"`
+	Code            string             `json:"code"`
+	DatabaseType    string             `json:"databaseType"`
+	Status          string             `json:"status"`
+	ExecutionTimeMs *int32             `json:"executionTimeMs"`
+	ExpectedOutput  []byte             `json:"expectedOutput"`
+	ActualOutput    []byte             `json:"actualOutput"`
+	ErrorMessage    *string            `json:"errorMessage"`
+	IsCorrect       *bool              `json:"isCorrect"`
+	Score           pgtype.Numeric     `json:"score"`
+	AttemptNumber   *int32             `json:"attemptNumber"`
+	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+}
+
+func (q *Queries) UpdateExamSubmissionWithResult(ctx context.Context, arg UpdateExamSubmissionWithResultParams) (UpdateExamSubmissionWithResultRow, error) {
 	row := q.db.QueryRow(ctx, updateExamSubmissionWithResult,
 		arg.ID,
 		arg.Status,
@@ -1753,7 +1819,7 @@ func (q *Queries) UpdateExamSubmissionWithResult(ctx context.Context, arg Update
 		arg.IsCorrect,
 		arg.Score,
 	)
-	var i ExamSubmission
+	var i UpdateExamSubmissionWithResultRow
 	err := row.Scan(
 		&i.ID,
 		&i.ExamID,

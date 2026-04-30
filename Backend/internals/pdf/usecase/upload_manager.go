@@ -4,12 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"regexp"
+	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 
 	aiUsecase "backend/internals/ai/usecase"
 	pdfDomain "backend/internals/pdf/domain"
 	"backend/internals/pdf/repository"
+	problemRepo "backend/internals/problem/repository"
 	"backend/pkgs/pdf"
+	"backend/sql/models"
 )
 
 // IUploadManager handles PDF upload workflow
@@ -19,7 +29,8 @@ type IUploadManager interface {
 	GenerateAIContent(ctx context.Context, pdfUploadID int64) error
 	GetUploadStatus(ctx context.Context, uploadID int64) (*pdfDomain.PDFUpload, error)
 	GetExtractedProblems(ctx context.Context, pdfUploadID int64) ([]pdfDomain.ProblemReviewQueue, error)
-	ConfirmProblem(ctx context.Context, queueID int64, solutionQuery string, dbType string) error
+	// ConfirmProblem lưu problem đã review vào bảng problems chính thức
+	ConfirmProblem(ctx context.Context, queueID int64, lecturerID int64, solutionQuery string, dbType string) error
 	UpdateProblemSolution(ctx context.Context, queueID int64, solutionQuery string) error
 }
 
@@ -31,6 +42,7 @@ type uploadManager struct {
 	testCaseGenerator aiUsecase.IAITestCaseGenerator
 	testCaseValidator aiUsecase.IAITestCaseValidator
 	aiOrchestrator    aiUsecase.IAIOrchestrator
+	problemRepo       problemRepo.IProblemRepository // inject để lưu vào problems table
 }
 
 // NewUploadManager creates a new upload manager
@@ -41,6 +53,7 @@ func NewUploadManager(
 	testCaseGenerator aiUsecase.IAITestCaseGenerator,
 	testCaseValidator aiUsecase.IAITestCaseValidator,
 	aiOrchestrator aiUsecase.IAIOrchestrator,
+	probRepo problemRepo.IProblemRepository,
 ) IUploadManager {
 	return &uploadManager{
 		pdfRepo:           pdfRepo,
@@ -49,6 +62,7 @@ func NewUploadManager(
 		testCaseGenerator: testCaseGenerator,
 		testCaseValidator: testCaseValidator,
 		aiOrchestrator:    aiOrchestrator,
+		problemRepo:       probRepo,
 	}
 }
 
@@ -76,12 +90,27 @@ func (m *uploadManager) ProcessExtraction(ctx context.Context, pdfUploadID int64
 		return fmt.Errorf("failed to get PDF upload: %w", err)
 	}
 
-	// Step 3: Parse PDF - extract text first, then parse problems
-	// NOTE: In production, this should download from MinIO first
-	problems, err := m.pdfParser.ParseProblems(upload.FilePath)
+	// Step 3a: Extract text from PDF file
+	// Dùng ledongthuc/pdf — hỗ trợ tiếng Việt UTF-8
+	rawText, err := m.pdfParser.ExtractTextFromFile(upload.FilePath)
+	if err != nil {
+		_, _ = m.pdfRepo.UpdatePDFUploadError(ctx, pdfUploadID, fmt.Sprintf("PDF text extraction failed: %v", err))
+		return fmt.Errorf("failed to extract PDF text: %w", err)
+	}
+
+	// Xóa file tạm sau khi đã extract xong
+	defer func() { _ = os.Remove(upload.FilePath) }()
+
+	// Step 3b: Parse problems từ text đã extract
+	problems, err := m.pdfParser.ParseProblems(rawText)
 	if err != nil {
 		_, _ = m.pdfRepo.UpdatePDFUploadError(ctx, pdfUploadID, fmt.Sprintf("PDF parsing failed: %v", err))
 		return fmt.Errorf("failed to parse PDF: %w", err)
+	}
+
+	if len(problems) == 0 {
+		_, _ = m.pdfRepo.UpdatePDFUploadError(ctx, pdfUploadID, "No problems found in PDF. Check PDF format (must have 'Bài 1:', 'Problem 1:' markers).")
+		return fmt.Errorf("no problems found in PDF")
 	}
 
 	// Step 4: Create extraction result structure
@@ -137,6 +166,8 @@ func (m *uploadManager) ProcessExtraction(ctx context.Context, pdfUploadID int64
 }
 
 // GenerateAIContent generates AI content for all extracted problems
+// TODO: Hiện tại hàm này đang chờ API key thực để hoạt động ổn định.
+// Nếu chưa có key, hàm orchestrator có thể trả về lỗi hoặc placeholder.
 func (m *uploadManager) GenerateAIContent(ctx context.Context, pdfUploadID int64) error {
 	// Get all pending problems for this PDF upload
 	problems, err := m.pdfRepo.GetProblemReviewQueueByPDF(ctx, pdfUploadID)
@@ -221,34 +252,125 @@ func (m *uploadManager) GetExtractedProblems(ctx context.Context, pdfUploadID in
 	return problems, nil
 }
 
-// ConfirmProblem saves an extracted problem to the main problems table
-func (m *uploadManager) ConfirmProblem(ctx context.Context, queueID int64, solutionQuery string, dbType string) error {
-	// Get the problem from review queue
-	problem, err := m.pdfRepo.GetProblemReviewQueueByID(ctx, queueID)
+// ConfirmProblem lưu problem đã review vào bảng problems chính thức và tạo test cases.
+// lecturerID là ID giảng viên xác nhận (từ JWT context).
+func (m *uploadManager) ConfirmProblem(ctx context.Context, queueID int64, lecturerID int64, solutionQuery string, dbType string) error {
+	// 1. Lấy queue item
+	queueItem, err := m.pdfRepo.GetProblemReviewQueueByID(ctx, queueID)
 	if err != nil {
-		return fmt.Errorf("failed to get problem from review queue: %w", err)
+		return fmt.Errorf("queue item not found: %w", err)
+	}
+	if queueItem.Status == "confirmed" {
+		return fmt.Errorf("problem already confirmed")
 	}
 
-	// Parse the problem draft
+	// 2. Parse problem draft
 	var draft pdfDomain.ProblemDraft
-	if err := json.Unmarshal(problem.ProblemDraft, &draft); err != nil {
+	if err := json.Unmarshal(queueItem.ProblemDraft, &draft); err != nil {
 		return fmt.Errorf("failed to parse problem draft: %w", err)
 	}
 
-	// Override with instructor-provided solution if given
+	// 3. Ưu tiên solution do giảng viên cung cấp
 	if solutionQuery != "" {
 		draft.SolutionQuery = solutionQuery
 	}
-
-	// TODO: Save to main problems table
-	// This would require a problem repository - for now, just update the queue status
-	// Using lecturerID = 0 as placeholder (should get from context)
-	_, err = m.pdfRepo.UpdateProblemReviewStatus(ctx, queueID, "confirmed", 0, "Confirmed by instructor")
-	if err != nil {
-		return fmt.Errorf("failed to update problem status: %w", err)
+	if draft.SolutionQuery == "" {
+		return fmt.Errorf("solution_query is required before confirming — please update the solution first")
+	}
+	if dbType == "" {
+		dbType = "postgresql"
 	}
 
-	return nil
+	// 4. Tạo slug từ title
+	slug := generateSlug(draft.Title)
+
+	isPublic := false
+	orderMatters := false
+
+	// 5. Lưu vào bảng problems
+	createdProblem, err := m.problemRepo.Create(ctx, models.CreateProblemParams{
+		Title:              draft.Title,
+		Slug:               slug,
+		Description:        draft.Description,
+		Difficulty:         draft.Difficulty,
+		InitScript:         draft.InitScript,
+		SolutionQuery:      draft.SolutionQuery,
+		SupportedDatabases: []string{dbType},
+		IsPublic:           &isPublic,
+		OrderMatters:       &orderMatters,
+		CreatedBy:          &lecturerID,
+	})
+	if err != nil {
+		// Nếu slug trùng, thêm suffix timestamp và retry
+		slug = fmt.Sprintf("%s-%d", slug, time.Now().UnixNano()%99999)
+		createdProblem, err = m.problemRepo.Create(ctx, models.CreateProblemParams{
+			Title:              draft.Title,
+			Slug:               slug,
+			Description:        draft.Description,
+			Difficulty:         draft.Difficulty,
+			InitScript:         draft.InitScript,
+			SolutionQuery:      draft.SolutionQuery,
+			SupportedDatabases: []string{dbType},
+			IsPublic:           &isPublic,
+			OrderMatters:       &orderMatters,
+			CreatedBy:          &lecturerID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create problem: %w", err)
+		}
+	}
+
+	// 6. Lưu test cases
+	totalTCs := len(draft.TestCases)
+	for _, tc := range draft.TestCases {
+		name := fmt.Sprintf("Test case %d", tc.TestNumber)
+		isHidden := !tc.IsPublic
+		weight := int32(10)
+		if totalTCs > 0 {
+			weight = int32(100 / totalTCs)
+		}
+		_, _ = m.problemRepo.CreateTestCase(ctx, models.CreateProblemTestCaseParams{
+			ProblemID:     createdProblem.ID,
+			Name:          &name,
+			Description:   &tc.Description,
+			InitScript:    tc.TestDataSQL,
+			SolutionQuery: draft.SolutionQuery,
+			Weight:        &weight,
+			IsHidden:      &isHidden,
+		})
+	}
+
+	// 7. Cập nhật queue status
+	_, err = m.pdfRepo.UpdateProblemReviewStatus(ctx, queueID, "confirmed", lecturerID,
+		fmt.Sprintf("Saved as problem ID %d (slug: %s)", createdProblem.ID, slug))
+	return err
+}
+
+// generateSlug tạo URL-safe slug từ title (hỗ trợ tiếng Việt: loại bỏ dấu trước)
+func generateSlug(title string) string {
+	// Bug 3 Fix: Normalize tiếng Việt trước khi tạo slug
+	slug := strings.ToLower(normalizeVietnamese(title))
+
+	// Loại bỏ ký tự không phải ASCII letter/digit/space/hyphen
+	slug = regexp.MustCompile(`[^a-z0-9\s-]`).ReplaceAllString(slug, "")
+	slug = regexp.MustCompile(`\s+`).ReplaceAllString(slug, "-")
+	slug = strings.Trim(slug, "-")
+	if len(slug) > 80 {
+		slug = slug[:80]
+	}
+	if slug == "" {
+		slug = fmt.Sprintf("problem-%d", time.Now().Unix())
+	}
+	return slug
+}
+
+// normalizeVietnamese loại bỏ dấu tiếng Việt
+func normalizeVietnamese(s string) string {
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	result, _, _ := transform.String(t, s)
+	result = strings.ReplaceAll(result, "đ", "d")
+	result = strings.ReplaceAll(result, "Đ", "D")
+	return result
 }
 
 // UpdateProblemSolution updates the solution query for a problem in review queue

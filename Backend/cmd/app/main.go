@@ -12,7 +12,7 @@ import (
 	exam_consumer "backend/internals/exam/infrastructure/messaging/kafka/consumer"
 	httpServer "backend/internals/server/http"
 	submission_consumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
-	"backend/pkg/cronjob"
+	"backend/pkgs/cronjob"
 	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
 )

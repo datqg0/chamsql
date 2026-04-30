@@ -18,6 +18,7 @@ func Routes(rg *gin.RouterGroup, database *db.Database, authMiddleware gin.Handl
 	{
 		// Public routes
 		topics.GET("", handler.List)
+		topics.GET("/tree", handler.GetTree)
 		topics.GET("/:slug", handler.GetBySlug)
 
 		// Protected routes (lecturer and admin only)

@@ -15,6 +15,7 @@ type ITopicRepository interface {
 	Update(ctx context.Context, id int32, params models.UpdateTopicParams) (*models.Topic, error)
 	Delete(ctx context.Context, id int32) error
 	CountProblemsPerTopic(ctx context.Context) ([]models.CountProblemsPerTopicRow, error)
+	GetTopicTree(ctx context.Context) ([]models.GetTopicTreeRow, error)
 }
 
 type topicRepository struct {
@@ -72,4 +73,8 @@ func (r *topicRepository) Delete(ctx context.Context, id int32) error {
 
 func (r *topicRepository) CountProblemsPerTopic(ctx context.Context) ([]models.CountProblemsPerTopicRow, error) {
 	return r.queries.CountProblemsPerTopic(ctx)
+}
+
+func (r *topicRepository) GetTopicTree(ctx context.Context) ([]models.GetTopicTreeRow, error) {
+	return r.queries.GetTopicTree(ctx)
 }

@@ -54,5 +54,8 @@ export const API_ENDPOINTS = {
         gradeSubmission: (submissionId: number) => `/lecturer/submissions/${submissionId}/grade`,
         bulkGrade: '/lecturer/submissions/bulk-grade',
     },
+    student: {
+        results: '/student/results',
+    },
     health: '/health',
 } as const

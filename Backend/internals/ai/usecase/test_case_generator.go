@@ -8,6 +8,7 @@ import (
 
 	"backend/db"
 	"backend/internals/ai/domain"
+	"backend/pkgs/ai"
 	"backend/sql/models"
 )
 
@@ -18,15 +19,23 @@ type IAITestCaseGenerator interface {
 
 // AITestCaseGenerator implements test case generation
 type aiTestCaseGenerator struct {
-	database *db.Database
-	queries  *models.Queries
+	database  *db.Database
+	queries   *models.Queries
+	llmClient ai.LLMClient
+	provider  string
 }
 
 // NewAITestCaseGenerator creates a new test case generator
-func NewAITestCaseGenerator(database *db.Database) IAITestCaseGenerator {
+func NewAITestCaseGenerator(
+	database *db.Database,
+	llmClient ai.LLMClient,
+	provider string,
+) IAITestCaseGenerator {
 	return &aiTestCaseGenerator{
-		database: database,
-		queries:  models.New(database.GetPool()),
+		database:  database,
+		queries:   models.New(database.GetPool()),
+		llmClient: llmClient,
+		provider:  provider,
 	}
 }
 
@@ -52,10 +61,25 @@ func (g *aiTestCaseGenerator) GenerateTestCases(ctx context.Context, req domain.
 	edgeCaseTestCases := g.generateEdgeCaseTestCases(req.SchemaSQL, tables)
 	testCases = append(testCases, edgeCaseTestCases...)
 
-	// Step 5: Assign public/hidden based on count preference
+	// Step 5: Try LLM generation for higher quality data (Tier 2 Upgrade)
+	if g.llmClient != nil {
+		llmSQL, err := g.llmClient.GenerateTestCase(ctx, req.Description, req.SchemaSQL, req.SolutionSQL)
+		if err == nil && llmSQL != "" {
+			testCases = append(testCases, domain.TestCaseGenerated{
+				TestNumber:     len(testCases) + 1,
+				Description:    "AI Generated specialized test data",
+				TestDataSQL:    llmSQL,
+				ExpectedOutput: json.RawMessage(`[]`), // To be validated by validator
+				IsPublic:       false,
+				Difficulty:     "hard",
+			})
+		}
+	}
+
+	// Step 6: Assign public/hidden based on count preference
 	testCases = g.assignPublicHidden(testCases, req.PublicTestCaseCount)
 
-	// Step 6: Add descriptions for each test case
+	// Step 7: Add descriptions for each test case
 	testCases = g.addTestCaseDescriptions(testCases, req.Description)
 
 	return testCases, nil

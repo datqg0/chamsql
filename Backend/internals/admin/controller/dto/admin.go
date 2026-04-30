@@ -158,3 +158,75 @@ type AuditLogResponse struct {
 	Page  int             `json:"page"`
 	Size  int             `json:"pageSize"`
 }
+
+// =============================================
+// DASHBOARD ANALYTICS DTOs
+// =============================================
+
+// DashboardResponse - Comprehensive dashboard for research/admin
+type DashboardResponse struct {
+	Overview         OverviewStats        `json:"overview"`
+	GradingStats     GradingStats         `json:"gradingStats"`
+	DailySubmissions []DailySubmission    `json:"dailySubmissions"`
+	PassRates        []ProblemPassRate    `json:"passRates"`
+	TopProblems      []TopProblem         `json:"topProblems"`
+}
+
+type OverviewStats struct {
+	TotalUsers         int64          `json:"totalUsers"`
+	TotalProblems      int64          `json:"totalProblems"`
+	TotalSubmissions   int64          `json:"totalSubmissions"`
+	ActiveUsersWeek    int64          `json:"activeUsersWeek"`
+	AvgSolveTimeMs     int32          `json:"avgSolveTimeMs"`
+	UsersByRole        map[string]int `json:"usersByRole"`
+}
+
+type GradingStats struct {
+	TotalSubmissions       int64   `json:"totalSubmissions"`
+	AvgGradingTimeMs       int32   `json:"avgGradingTimeMs"`
+	MinGradingTimeMs       int64   `json:"minGradingTimeMs"`
+	MaxGradingTimeMs       int64   `json:"maxGradingTimeMs"`
+	TotalCorrect           int64   `json:"totalCorrect"`
+	TotalUsers             int64   `json:"totalUsers"`
+	TotalProblemsAttempted int64   `json:"totalProblemsAttempted"`
+	PassRate               float64 `json:"passRate"`
+}
+
+type DailySubmission struct {
+	Date              string `json:"date"`
+	TotalSubmissions  int64  `json:"totalSubmissions"`
+	CorrectCount      int64  `json:"correctCount"`
+	AvgExecutionMs    int32  `json:"avgExecutionMs"`
+}
+
+type ProblemPassRate struct {
+	ID               int64   `json:"id"`
+	Title            string  `json:"title"`
+	Difficulty       string  `json:"difficulty"`
+	TotalSubmissions int64   `json:"totalSubmissions"`
+	CorrectCount     int64   `json:"correctCount"`
+	PassRate         float64 `json:"passRate"`
+}
+
+type TopProblem struct {
+	ID              int64  `json:"id"`
+	Title           string `json:"title"`
+	Slug            string `json:"slug"`
+	Difficulty      string `json:"difficulty"`
+	SubmissionCount int64  `json:"submissionCount"`
+	UniqueUsers     int64  `json:"uniqueUsers"`
+}
+
+type PerformanceTimelineEntry struct {
+	Date            string `json:"date"`
+	AvgTimeMs       int32  `json:"avgTimeMs"`
+	BestTimeMs      int64  `json:"bestTimeMs"`
+	SubmissionCount int64  `json:"submissionCount"`
+	CorrectCount    int64  `json:"correctCount"`
+}
+
+type PerformanceTimelineResponse struct {
+	UserID    int64                      `json:"userId"`
+	ProblemID *int64                     `json:"problemId,omitempty"`
+	Timeline  []PerformanceTimelineEntry `json:"timeline"`
+}

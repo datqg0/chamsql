@@ -30,6 +30,9 @@ type IGradingUseCase interface {
 
 	// Auto-score submissions (called after submission is received and executed)
 	AutoScoreSubmission(ctx context.Context, submissionID int64, scoringMode string) (*dto.SubmissionGradingResponse, error)
+
+	// GetExamResults trả về kết quả của toàn bộ sinh viên trong một kỳ thi
+	GetExamResults(ctx context.Context, examID int64) (*dto.ExamResultsResponse, error)
 }
 
 type gradingUseCase struct {
@@ -456,4 +459,67 @@ func (gu *gradingUseCase) buildSubmissionGradingResponse(ctx context.Context, su
 	}
 
 	return &resp, nil
+}
+
+// GetExamResults trả về kết quả toàn bộ sinh viên trong một kỳ thi,
+// sắp xếp theo tổng điểm giảm dần và có rank.
+func (gu *gradingUseCase) GetExamResults(ctx context.Context, examID int64) (*dto.ExamResultsResponse, error) {
+	rows, err := gu.queries.GetExamResults(ctx, examID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get exam results: %w", err)
+	}
+
+	participants := make([]dto.ExamParticipantResult, 0, len(rows))
+	submittedCount := 0
+	totalScore := 0.0
+
+	for i, row := range rows {
+		var score float64
+		if n, scanErr := row.TotalScore.Float64Value(); scanErr == nil {
+			score = n.Float64
+		}
+		totalScore += score
+
+		status := ""
+		if row.Status != nil {
+			status = *row.Status
+		}
+		if status == "submitted" {
+			submittedCount++
+		}
+
+		var startedAt, submittedAt *string
+		if row.StartedAt.Valid {
+			s := row.StartedAt.Time.Format(time.RFC3339)
+			startedAt = &s
+		}
+		if row.SubmittedAt.Valid {
+			s := row.SubmittedAt.Time.Format(time.RFC3339)
+			submittedAt = &s
+		}
+
+		participants = append(participants, dto.ExamParticipantResult{
+			UserID:      row.UserID,
+			FullName:    row.FullName,
+			StudentID:   row.StudentID,
+			TotalScore:  score,
+			Status:      status,
+			StartedAt:   startedAt,
+			SubmittedAt: submittedAt,
+			Rank:        i + 1, // đã được sort DESC bởi query
+		})
+	}
+
+	avgScore := 0.0
+	if len(rows) > 0 {
+		avgScore = totalScore / float64(len(rows))
+	}
+
+	return &dto.ExamResultsResponse{
+		ExamID:         examID,
+		TotalCount:     len(participants),
+		SubmittedCount: submittedCount,
+		AverageScore:   avgScore,
+		Participants:   participants,
+	}, nil
 }

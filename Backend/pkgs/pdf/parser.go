@@ -3,9 +3,10 @@ package pdf
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
+
+	ledpdf "github.com/ledongthuc/pdf"
 )
 
 // PDFParser handles PDF file parsing
@@ -16,21 +17,56 @@ func NewPDFParser() *PDFParser {
 	return &PDFParser{}
 }
 
-// ExtractText extracts text content from PDF
-func (p *PDFParser) ExtractText(pdfReader io.Reader) (string, error) {
-	// Create temporary file since pdfcpu requires file path
-	// For now, return simple error - in production, handle with temp file
-	return "", fmt.Errorf("PDF extraction requires file handling - implement in infrastructure layer")
+// ExtractTextFromFile reads a PDF from disk and returns all plain text.
+// Supports Vietnamese unicode (UTF-8) as returned by ledongthuc/pdf.
+func (p *PDFParser) ExtractTextFromFile(filePath string) (string, error) {
+	f, r, err := ledpdf.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot open PDF file: %w", err)
+	}
+	defer f.Close()
+
+	var sb strings.Builder
+	for i := 1; i <= r.NumPage(); i++ {
+		page := r.Page(i)
+		if page.V.IsNull() {
+			continue
+		}
+		text, err := page.GetPlainText(nil)
+		if err != nil {
+			// Bỏ qua trang lỗi, không dừng toàn bộ quá trình
+			continue
+		}
+		sb.WriteString(text)
+		sb.WriteString("\n")
+	}
+
+	result := sb.String()
+	if strings.TrimSpace(result) == "" {
+		return "", fmt.Errorf("PDF contains no extractable text (may be image-only or encrypted)")
+	}
+	return result, nil
 }
 
-// ParseProblems extracts problems from PDF content
+// ParseProblems extracts problems from already-extracted PDF text content.
+// Input: raw text string from ExtractTextFromFile
 func (p *PDFParser) ParseProblems(content string) ([]ParsedProblem, error) {
 	var problems []ParsedProblem
 
-	// Split by problem markers (e.g., "Problem 1:", "Problem #2", "## Problem")
+	// Split by problem markers (e.g., "Problem 1:", "Problem #2", "## Problem", "Bài 1:", "Câu 1:")
 	problemSections := p.splitByProblem(content)
 
+	if len(problemSections) == 0 {
+		// Treat entire content as one problem
+		problemSections = []string{content}
+	}
+
 	for idx, section := range problemSections {
+		section = strings.TrimSpace(section)
+		if section == "" {
+			continue
+		}
+
 		problem := ParsedProblem{
 			ProblemNumber: idx + 1,
 		}
@@ -44,11 +80,11 @@ func (p *PDFParser) ParseProblems(content string) ([]ParsedProblem, error) {
 		// Extract difficulty
 		problem.Difficulty = p.extractDifficulty(section)
 
-		// Extract schema
-		problem.SchemaSQL = p.extractSQL(section, "schema|create table|init")
+		// Extract schema SQL
+		problem.SchemaSQL = p.extractSQL(section, "schema|create table|init|khởi tạo|tạo bảng")
 
-		// Extract solution (if exists)
-		solution := p.extractSQL(section, "solution|answer|sql query")
+		// Extract solution if explicitly present
+		solution := p.extractSQL(section, "solution|answer|sql query|đáp án|lời giải")
 		if solution != "" {
 			problem.SolutionSQL = &solution
 		}
@@ -85,71 +121,94 @@ type ParsedTestCase struct {
 // Helper functions
 
 func (p *PDFParser) splitByProblem(content string) []string {
-	// Match patterns like "Problem 1:", "Problem #2", "## Problem"
-	re := regexp.MustCompile(`(?i)(problem\s+[#\d]+|##\s*problem)`)
-	parts := re.Split(content, -1)
+	// Match Vietnamese and English problem markers (Problem, Bài, Câu, Question, Section, ...)
+	// Hỗ trợ cả các biến thể có dấu, không dấu, số thứ tự, và ký hiệu ##
+	re := regexp.MustCompile(`(?im)(^|\n)(problem\s*[#\d]*|##\s*problem|bài\s*\d+|câu\s*\d+|question\s*\d+|đề\s+bài\s*\d+)`)
+	indices := re.FindAllStringIndex(content, -1)
 
-	// Filter out empty parts
-	var sections []string
-	for _, part := range parts {
-		if strings.TrimSpace(part) != "" {
-			sections = append(sections, part)
-		}
+	if len(indices) == 0 {
+		return nil
 	}
 
+	var sections []string
+	for i, idx := range indices {
+		start := idx[0]
+		var end int
+		if i+1 < len(indices) {
+			end = indices[i+1][0]
+		} else {
+			end = len(content)
+		}
+		section := strings.TrimSpace(content[start:end])
+		if section != "" {
+			sections = append(sections, section)
+		}
+	}
 	return sections
 }
 
 func (p *PDFParser) extractTitle(section string) string {
 	lines := strings.Split(section, "\n")
-	if len(lines) > 0 {
-		return strings.TrimSpace(lines[0])
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			// Remove problem number prefix if present (e.g., "Bài 1: Title")
+			trimmed = regexp.MustCompile(`(?i)^(problem|bài|câu|question)\s+\d+[:\.\)]\s*`).ReplaceAllString(trimmed, "")
+			if trimmed != "" {
+				return trimmed
+			}
+		}
 	}
-	return "Untitled Problem"
+	return fmt.Sprintf("Problem %d", 1)
 }
 
 func (p *PDFParser) extractDescription(section string) string {
-	// Find content between title and schema/solution
-	re := regexp.MustCompile(`(?i)schema|solution|create table|test cases`)
+	// Find content before schema/solution markers
+	re := regexp.MustCompile(`(?i)(schema|solution|create table|test cases?|đáp án|tạo bảng|input|output)`)
 	parts := re.Split(section, 2)
 	if len(parts) > 0 {
 		desc := strings.TrimSpace(parts[0])
-		// Remove problem number if present
-		desc = regexp.MustCompile(`^\d+\.\s*`).ReplaceAllString(desc, "")
+		// Remove problem number header line
+		lines := strings.Split(desc, "\n")
+		if len(lines) > 1 {
+			desc = strings.TrimSpace(strings.Join(lines[1:], "\n"))
+		}
 		return desc
 	}
 	return ""
 }
 
 func (p *PDFParser) extractDifficulty(section string) string {
-	section = strings.ToLower(section)
+	lower := strings.ToLower(section)
 
-	if strings.Contains(section, "easy") {
+	if strings.Contains(lower, "easy") || strings.Contains(lower, "dễ") {
 		return "easy"
 	}
-	if strings.Contains(section, "hard") {
+	if strings.Contains(lower, "hard") || strings.Contains(lower, "khó") {
 		return "hard"
 	}
-	if strings.Contains(section, "medium") {
+	if strings.Contains(lower, "medium") || strings.Contains(lower, "trung bình") {
 		return "medium"
 	}
-
-	// Default
 	return "medium"
 }
 
 func (p *PDFParser) extractSQL(section string, pattern string) string {
-	// Find section with pattern (schema, solution, etc.)
-	re := regexp.MustCompile(fmt.Sprintf(`(?i)%s:?\s*([\s\S]*?)(?:test|input|expected|$)`, pattern))
-	matches := re.FindStringSubmatch(section)
-
+	// Try to find SQL in code blocks first
+	codeBlockRe := regexp.MustCompile("(?is)```(?:sql)?\\s*(.+?)```")
+	matches := codeBlockRe.FindStringSubmatch(section)
 	if len(matches) > 1 {
-		sql := strings.TrimSpace(matches[1])
-		// Clean up SQL - remove markdown code blocks
+		return strings.TrimSpace(matches[1])
+	}
+
+	// Find section with keyword pattern
+	re := regexp.MustCompile(fmt.Sprintf(`(?i)(?:%s):?\s*([\s\S]*?)(?:test|input|expected|output|đáp án|$)`, pattern))
+	kMatches := re.FindStringSubmatch(section)
+	if len(kMatches) > 1 {
+		sql := strings.TrimSpace(kMatches[1])
 		sql = strings.ReplaceAll(sql, "```sql", "")
 		sql = strings.ReplaceAll(sql, "```", "")
-		sql = strings.TrimSpace(sql)
-		return sql
+		return strings.TrimSpace(sql)
 	}
 
 	return ""
@@ -158,22 +217,18 @@ func (p *PDFParser) extractSQL(section string, pattern string) string {
 func (p *PDFParser) extractTestCases(section string) []ParsedTestCase {
 	var testCases []ParsedTestCase
 
-	// Simple pattern matching for test cases
-	// Format: "Test 1: ..." or "Input: ... Expected: ..."
 	lines := strings.Split(section, "\n")
-
 	var currentTest ParsedTestCase
 	testNumber := 1
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-
 		if line == "" {
 			continue
 		}
 
-		// Detect test case start
-		if regexp.MustCompile(`(?i)test\s+\d+|test case`).MatchString(line) {
+		// Detect test case start (Vietnamese + English)
+		if regexp.MustCompile(`(?i)(test\s+\d+|test case\s*\d*|trường hợp\s+\d+|tc\s*\d+)`).MatchString(line) {
 			if currentTest.TestDataSQL != "" {
 				testCases = append(testCases, currentTest)
 			}
@@ -184,18 +239,17 @@ func (p *PDFParser) extractTestCases(section string) []ParsedTestCase {
 			testNumber++
 		}
 
-		// Extract input/data
-		if regexp.MustCompile(`(?i)input:|test data:|insert`).MatchString(line) {
+		// Extract SQL data
+		if regexp.MustCompile(`(?i)(input:|test data:|insert\s+into|dữ liệu:)`).MatchString(line) {
 			currentTest.TestDataSQL = line
 		}
 
-		// Extract expected output
-		if regexp.MustCompile(`(?i)expected:|output:`).MatchString(line) {
+		// Extract expected output description
+		if regexp.MustCompile(`(?i)(expected:|output:|kết quả:)`).MatchString(line) {
 			currentTest.Description = line
 		}
 	}
 
-	// Add last test case if exists
 	if currentTest.TestDataSQL != "" {
 		testCases = append(testCases, currentTest)
 	}

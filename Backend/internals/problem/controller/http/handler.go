@@ -196,3 +196,39 @@ func (h *ProblemHandler) Delete(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"message": "Problem deleted successfully"})
 }
+
+// ListMyProblems godoc
+// @Summary     List my problems (for lecturers)
+// @Tags        Problems
+// @Produce     json
+// @Param       page query int false "Page number" default(1)
+// @Param       pageSize query int false "Page size" default(20)
+// @Success     200 {object} dto.ProblemListResponse
+// @Router      /lecturer/problems/mine [get]
+func (h *ProblemHandler) ListMyProblems(c *gin.Context) {
+	userID, ok := middlewares.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+
+	var query dto.ProblemListQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if query.Page <= 0 {
+		query.Page = 1
+	}
+	if query.PageSize <= 0 || query.PageSize > 100 {
+		query.PageSize = 20
+	}
+
+	result, err := h.usecase.ListMyProblems(c.Request.Context(), userID, &query)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}

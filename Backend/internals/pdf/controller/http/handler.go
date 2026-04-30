@@ -1,10 +1,11 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -78,19 +79,25 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Return 202 Accepted (processing asynchronously)
+	// Return 202 Accepted ngay lập tức, processing chạy background
 	c.JSON(http.StatusAccepted, dto.PDFUploadResponse{
 		ID:        upload.ID,
 		Status:    upload.Status,
 		FileName:  upload.FileName,
 		CreatedAt: upload.CreatedAt,
-		Message:   "PDF upload accepted. Processing in background.",
+		Message:   "PDF upload accepted. Processing in background — poll /status to track progress.",
 	})
 
-	// TODO: Queue extraction job to background worker (or call synchronously for now)
-	// For MVP, call extraction synchronously
-	_ = h.uploadManager.ProcessExtraction(c.Request.Context(), upload.ID)
-	_ = h.uploadManager.GenerateAIContent(c.Request.Context(), upload.ID)
+	// Chạy extraction + AI generation trong goroutine riêng.
+	// Dùng context.Background() để không bị cancel khi HTTP request kết thúc.
+	go func(uploadID int64) {
+		bgCtx := context.Background()
+		if err := h.uploadManager.ProcessExtraction(bgCtx, uploadID); err != nil {
+			// Error đã được lưu vào DB bởi ProcessExtraction, không cần log thêm
+			return
+		}
+		_ = h.uploadManager.GenerateAIContent(bgCtx, uploadID)
+	}(upload.ID)
 }
 
 // GetStatus godoc
@@ -214,8 +221,9 @@ func (h *PDFHandler) UpdateSolution(c *gin.Context) {
 
 	// Optionally confirm the problem if db_type is provided
 	if req.DBType != "" {
-		if err := h.uploadManager.ConfirmProblem(c.Request.Context(), queueID, req.SolutionQuery, req.DBType); err != nil {
-			// Log but don't fail - solution was updated
+		lecturerID, _ := middlewares.GetUserID(c)
+		if err := h.uploadManager.ConfirmProblem(c.Request.Context(), queueID, lecturerID, req.SolutionQuery, req.DBType); err != nil {
+			// Log nhưng không fail — solution đã được update
 			response.Success(c, dto.UpdateSolutionResponse{
 				ID:            queueID,
 				SolutionQuery: req.SolutionQuery,
@@ -233,5 +241,41 @@ func (h *PDFHandler) UpdateSolution(c *gin.Context) {
 		DBType:        req.DBType,
 		Status:        "confirmed",
 		Message:       "Solution updated and problem confirmed successfully",
+	})
+}
+
+// ConfirmProblem godoc
+// @Summary     Confirm extracted problem and save to main problems table
+// @Description Giảng viên xác nhận bài toán đã extract từ PDF và lưu vào DB chính thức.
+// @Description Có thể cung cấp hoặc override solution_query tại bước này.
+// @Tags        PDF Upload
+// @Accept      json
+// @Produce     json
+// @Param       id path int true "Problem Queue ID"
+// @Param       request body dto.ConfirmProblemRequest true "Confirm request"
+// @Success     200 {object} dto.ConfirmProblemResponse
+// @Router      /lecturer/pdf/problems/{id}/confirm [post]
+func (h *PDFHandler) ConfirmProblem(c *gin.Context) {
+	lecturerID, _ := middlewares.GetUserID(c)
+
+	queueID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid problem queue ID")
+		return
+	}
+
+	var req dto.ConfirmProblemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := h.uploadManager.ConfirmProblem(c.Request.Context(), queueID, lecturerID, req.SolutionQuery, req.DBType); err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+
+	response.Success(c, dto.ConfirmProblemResponse{
+		Message: "Problem confirmed and saved to problems table successfully",
 	})
 }

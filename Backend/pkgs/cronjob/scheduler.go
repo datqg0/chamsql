@@ -41,11 +41,13 @@ func (s *Scheduler) Start(ctx context.Context) {
 		interval := s.intervals[i]
 		go s.runTask(ctx, task, interval)
 	}
+	logger.Info("Scheduler started with %d tasks", len(s.tasks))
 }
 
-// Stop stops the scheduler
+// Stop stops the scheduler gracefully
 func (s *Scheduler) Stop() {
 	close(s.stopCh)
+	logger.Info("Scheduler stopped")
 }
 
 // runTask executes a task repeatedly at the given interval
@@ -58,10 +60,10 @@ func (s *Scheduler) runTask(ctx context.Context, task Task, interval time.Durati
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("Cronjob stopped: %s", task.Name())
+			logger.Info("Cronjob stopped (context cancelled): %s", task.Name())
 			return
 		case <-s.stopCh:
-			logger.Info("Cronjob stopped: %s", task.Name())
+			logger.Info("Cronjob stopped (scheduler shutdown): %s", task.Name())
 			return
 		case <-ticker.C:
 			if err := task.Execute(ctx); err != nil {

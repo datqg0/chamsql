@@ -15,20 +15,23 @@ type IAISolutionGenerator interface {
 
 // AISolutionGenerator implements solution generation
 type aiSolutionGenerator struct {
-	patternMatcher    *ai.PatternMatcher
-	huggingfaceClient *ai.HuggingFaceClient
-	hybridMode        bool
+	patternMatcher *ai.PatternMatcher
+	llmClient      ai.LLMClient
+	provider       string
+	hybridMode     bool
 }
 
 // NewAISolutionGenerator creates a new solution generator
 func NewAISolutionGenerator(
 	patternMatcher *ai.PatternMatcher,
-	huggingfaceClient *ai.HuggingFaceClient,
+	llmClient ai.LLMClient,
+	provider string,
 ) IAISolutionGenerator {
 	return &aiSolutionGenerator{
-		patternMatcher:    patternMatcher,
-		huggingfaceClient: huggingfaceClient,
-		hybridMode:        true,
+		patternMatcher: patternMatcher,
+		llmClient:      llmClient,
+		provider:       provider,
+		hybridMode:     true,
 	}
 }
 
@@ -47,15 +50,15 @@ func (g *aiSolutionGenerator) GenerateSolution(ctx context.Context, req domain.S
 		return resp, nil
 	}
 
-	// Step 2: If pattern confidence is low, try HuggingFace LLM
-	if g.huggingfaceClient != nil && req.SchemaSQL != "" {
-		llmResult, err := g.huggingfaceClient.GenerateSolution(ctx, req.ProblemDescription, req.SchemaSQL)
+	// Step 2: If pattern confidence is low, try LLM (OpenAI or HuggingFace)
+	if g.llmClient != nil && req.SchemaSQL != "" {
+		llmResult, err := g.llmClient.GenerateSolution(ctx, req.ProblemDescription, req.SchemaSQL)
 		if err == nil && llmResult != "" {
 			// Validate LLM result
 			if g.patternMatcher.ValidateSQLSyntax(llmResult) {
 				resp.GeneratedContent = llmResult
 				resp.ConfidenceScore = 0.85
-				resp.AIProvider = "huggingface"
+				resp.AIProvider = g.provider
 				return resp, nil
 			}
 		}

@@ -399,3 +399,53 @@ func (h *AdminHandler) GetAuditLog(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
+
+// =============================================
+// DASHBOARD & ANALYTICS HANDLERS
+// =============================================
+
+// GetDashboard godoc
+// @Summary     Get comprehensive dashboard analytics
+// @Tags        Admin
+// @Produce     json
+// @Success     200 {object} dto.DashboardResponse
+// @Router      /admin/dashboard [get]
+func (h *AdminHandler) GetDashboard(c *gin.Context) {
+	result, err := h.usecase.GetDashboard(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+
+// GetPerformanceTimeline godoc
+// @Summary     Get user performance timeline for charts
+// @Tags        Admin
+// @Produce     json
+// @Param       userId query int true "User ID"
+// @Param       problemId query int false "Problem ID (optional)"
+// @Success     200 {object} dto.PerformanceTimelineResponse
+// @Router      /admin/timeline [get]
+func (h *AdminHandler) GetPerformanceTimeline(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Query("userId"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "userId is required")
+		return
+	}
+
+	var problemID *int64
+	if pidStr := c.Query("problemId"); pidStr != "" {
+		pid, err := strconv.ParseInt(pidStr, 10, 64)
+		if err == nil {
+			problemID = &pid
+		}
+	}
+
+	result, err := h.usecase.GetPerformanceTimeline(c.Request.Context(), userID, problemID)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}

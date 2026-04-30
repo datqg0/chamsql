@@ -99,15 +99,9 @@ func (o *aiOrchestrator) GenerateTestCases(ctx context.Context, req domain.TestC
 	return o.testCaseGenerator.GenerateTestCases(ctx, req)
 }
 
-// ValidateTestCases validates the test cases
+// ValidateTestCases delegates to the real test case validator
 func (o *aiOrchestrator) ValidateTestCases(ctx context.Context, schemaSQL, solutionSQL string) (*domain.ValidationResult, error) {
-	// Note: In production, this would take actual test cases to validate
-	// For now, this is a placeholder
-	return &domain.ValidationResult{
-		IsValid:     true,
-		PassedCount: 8,
-		TotalCount:  8,
-	}, nil
+	return o.testCaseValidator.ValidateTestCases(ctx, schemaSQL, solutionSQL, nil)
 }
 
 // Helper methods

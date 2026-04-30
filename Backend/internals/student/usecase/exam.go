@@ -320,6 +320,15 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 		return nil, fmt.Errorf("exam not in progress")
 	}
 
+	// Kiểm tra thời hạn thi — không chấp nhận nộp bài sau khi hết giờ
+	examInfo, err := su.queries.GetExamForStudent(ctx, examID)
+	if err != nil {
+		return nil, fmt.Errorf("exam not found: %w", err)
+	}
+	if examInfo.EndTime.Valid && time.Now().UTC().After(examInfo.EndTime.Time) {
+		return nil, fmt.Errorf("exam time has expired, cannot submit")
+	}
+
 	// 2. Get problem details (includes init_script and solution_query)
 	problem, err := su.queries.GetExamProblemDetails(ctx, models.GetExamProblemDetailsParams{
 		ExamID: examID,
@@ -467,13 +476,19 @@ func (su *studentExamUseCase) SubmitExam(ctx context.Context, examID, userID int
 
 	row := su.db.GetPool().QueryRow(ctx,
 		`SELECT COALESCE(SUM(es.score), 0) FROM exam_submissions es
-		 WHERE es.exam_id = $1 AND es.user_id = $2 AND es.graded_by IS NOT NULL`,
+		 WHERE es.exam_id = $1 AND es.user_id = $2 AND es.score IS NOT NULL`,
 		examID, userID)
 
 	var totalScore float64
 	if err := row.Scan(&totalScore); err != nil {
 		totalScore = 0
 	}
+
+	// Bug 2 Fix: Ghi lại điểm vào DB
+	_, _ = su.db.GetPool().Exec(ctx,
+		"UPDATE exam_participants SET total_score = $1 WHERE id = $2",
+		totalScore, updated.ID,
+	)
 
 	updatedStatus := "submitted"
 	if updated.Status != nil {

@@ -620,3 +620,29 @@ func (h *LecturerHandler) BulkGradeSubmissions(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// GetExamResults - Xem kết quả toàn bộ sinh viên của một kỳ thi
+// @Summary Get exam results
+// @Description Trả về kết quả thi của tất cả sinh viên (điểm, rank, trạng thái nộp)
+// @Tags Grading
+// @Produce json
+// @Param examId path int64 true "Exam ID"
+// @Success 200 {object} dto.ExamResultsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 404 {string} string "Exam not found"
+// @Router /lecturer/exams/{examId}/results [get]
+func (h *LecturerHandler) GetExamResults(c *gin.Context) {
+	examID, err := strconv.ParseInt(c.Param("examId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exam id"})
+		return
+	}
+
+	response, err := h.gradingUseCase.GetExamResults(c.Request.Context(), examID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}

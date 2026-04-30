@@ -58,6 +58,11 @@ type Config struct {
 
 	// AI/ML Services (Phase 4)
 	HuggingFaceAPIKey string `mapstructure:"HUGGINGFACE_API_KEY"`
+	OpenAIAPIKey      string `mapstructure:"OPENAI_API_KEY"`
+	AIProvider        string `mapstructure:"AI_PROVIDER"` // "huggingface" or "openai"
+
+	// CORS
+	AllowedOrigins string `mapstructure:"ALLOWED_ORIGINS"`
 }
 
 var cfg Config
@@ -99,6 +104,9 @@ func LoadConfig() *Config {
 		AccessTokenDuration:  viper.GetDuration("ACCESS_TOKEN_DURATION"),
 		RefreshTokenDuration: viper.GetDuration("REFRESH_TOKEN_DURATION"),
 		HuggingFaceAPIKey:    viper.GetString("HUGGINGFACE_API_KEY"),
+		OpenAIAPIKey:         viper.GetString("OPENAI_API_KEY"),
+		AIProvider:           viper.GetString("AI_PROVIDER"),
+		AllowedOrigins:       viper.GetString("ALLOWED_ORIGINS"),
 	}
 
 	// Defaults
@@ -119,6 +127,9 @@ func LoadConfig() *Config {
 	}
 	if cfg.RefreshTokenDuration == 0 {
 		cfg.RefreshTokenDuration = 168 * time.Hour
+	}
+	if cfg.AIProvider == "" {
+		cfg.AIProvider = "huggingface"
 	}
 
 	return &cfg

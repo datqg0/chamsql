@@ -710,12 +710,19 @@ func (u *examUseCase) GetMyExams(ctx context.Context, userID int64) ([]dto.ExamR
 	result := make([]dto.ExamResponse, len(exams))
 	for i, e := range exams {
 		result[i] = dto.ExamResponse{
-			ID:              e.ID,
-			Title:           e.Title,
-			StartTime:       pgToTime(e.StartTime),
-			EndTime:         pgToTime(e.EndTime),
-			DurationMinutes: int(e.DurationMinutes),
-			Status:          ptrToStr(e.ParticipationStatus), // Correct field name
+			ID:                    e.ID,
+			Title:                 e.Title,
+			Description:           ptrToStr(e.Description),
+			StartTime:             pgToTime(e.StartTime),
+			EndTime:               pgToTime(e.EndTime),
+			DurationMinutes:       int(e.DurationMinutes),
+			AllowedDatabases:      e.AllowedDatabases,
+			AllowAiAssistance:     ptrToBool(e.AllowAiAssistance),
+			ShuffleProblems:       ptrToBool(e.ShuffleProblems),
+			ShowResultImmediately: ptrToBool(e.ShowResultImmediately),
+			MaxAttempts:           int(ptrToInt32(e.MaxAttempts)),
+			IsPublic:              ptrToBool(e.IsPublic),
+			Status:                ptrToStr(e.ParticipationStatus),
 		}
 	}
 	return result, nil

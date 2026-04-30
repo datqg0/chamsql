@@ -107,21 +107,24 @@ type ExamProblem struct {
 }
 
 type ExamSubmission struct {
-	ID              int64              `json:"id"`
-	ExamID          int64              `json:"examId"`
-	ExamProblemID   int64              `json:"examProblemId"`
-	UserID          int64              `json:"userId"`
-	Code            string             `json:"code"`
-	DatabaseType    string             `json:"databaseType"`
-	Status          string             `json:"status"`
-	ExecutionTimeMs *int32             `json:"executionTimeMs"`
-	ExpectedOutput  []byte             `json:"expectedOutput"`
-	ActualOutput    []byte             `json:"actualOutput"`
-	ErrorMessage    *string            `json:"errorMessage"`
-	IsCorrect       *bool              `json:"isCorrect"`
-	Score           pgtype.Numeric     `json:"score"`
-	AttemptNumber   *int32             `json:"attemptNumber"`
-	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
+	ID                 int64              `json:"id"`
+	ExamID             int64              `json:"examId"`
+	ExamProblemID      int64              `json:"examProblemId"`
+	UserID             int64              `json:"userId"`
+	Code               string             `json:"code"`
+	DatabaseType       string             `json:"databaseType"`
+	Status             string             `json:"status"`
+	ExecutionTimeMs    *int32             `json:"executionTimeMs"`
+	ExpectedOutput     []byte             `json:"expectedOutput"`
+	ActualOutput       []byte             `json:"actualOutput"`
+	ErrorMessage       *string            `json:"errorMessage"`
+	IsCorrect          *bool              `json:"isCorrect"`
+	Score              pgtype.Numeric     `json:"score"`
+	AttemptNumber      *int32             `json:"attemptNumber"`
+	SubmittedAt        pgtype.Timestamptz `json:"submittedAt"`
+	GradingStartedAt   pgtype.Timestamptz `json:"gradingStartedAt"`
+	GradingCompletedAt pgtype.Timestamptz `json:"gradingCompletedAt"`
+	GradingDurationMs  *int32             `json:"gradingDurationMs"`
 }
 
 type ExcelExport struct {
@@ -259,21 +262,24 @@ type RolePermission struct {
 }
 
 type Submission struct {
-	ID              int64              `json:"id"`
-	UserID          int64              `json:"userId"`
-	ProblemID       int64              `json:"problemId"`
-	Code            string             `json:"code"`
-	DatabaseType    string             `json:"databaseType"`
-	Status          string             `json:"status"`
-	ExecutionTimeMs *int32             `json:"executionTimeMs"`
-	ExpectedOutput  []byte             `json:"expectedOutput"`
-	ActualOutput    []byte             `json:"actualOutput"`
-	ErrorMessage    *string            `json:"errorMessage"`
-	IsCorrect       *bool              `json:"isCorrect"`
-	SubmittedAt     pgtype.Timestamptz `json:"submittedAt"`
-	Score           pgtype.Numeric     `json:"score"`
-	TotalTestCases  *int32             `json:"totalTestCases"`
-	PassedTestCases *int32             `json:"passedTestCases"`
+	ID                 int64              `json:"id"`
+	UserID             int64              `json:"userId"`
+	ProblemID          int64              `json:"problemId"`
+	Code               string             `json:"code"`
+	DatabaseType       string             `json:"databaseType"`
+	Status             string             `json:"status"`
+	ExecutionTimeMs    *int32             `json:"executionTimeMs"`
+	ExpectedOutput     []byte             `json:"expectedOutput"`
+	ActualOutput       []byte             `json:"actualOutput"`
+	ErrorMessage       *string            `json:"errorMessage"`
+	IsCorrect          *bool              `json:"isCorrect"`
+	SubmittedAt        pgtype.Timestamptz `json:"submittedAt"`
+	Score              pgtype.Numeric     `json:"score"`
+	TotalTestCases     *int32             `json:"totalTestCases"`
+	PassedTestCases    *int32             `json:"passedTestCases"`
+	GradingStartedAt   pgtype.Timestamptz `json:"gradingStartedAt"`
+	GradingCompletedAt pgtype.Timestamptz `json:"gradingCompletedAt"`
+	GradingDurationMs  *int32             `json:"gradingDurationMs"`
 }
 
 type SubmissionTestResult struct {
@@ -314,6 +320,8 @@ type Topic struct {
 	SortOrder   *int32             `json:"sortOrder"`
 	IsActive    *bool              `json:"isActive"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	ParentID    *int32             `json:"parentId"`
+	Level       *int32             `json:"level"`
 }
 
 type User struct {

@@ -5,6 +5,7 @@ import (
 	"backend/db"
 	adminHttp "backend/internals/admin/controller/http"
 	authHttp "backend/internals/auth/controller/http"
+	chatbotHttp "backend/internals/chatbot/controller/http"
 	examHttp "backend/internals/exam/controller/http"
 	lecturerHttp "backend/internals/lecturer/controller/http"
 	pdfHttp "backend/internals/pdf/controller/http"
@@ -54,7 +55,7 @@ func (s *Server) Run() error {
 	// Middlewares
 	s.engine.Use(middlewares.RecoveryMiddleware())
 	s.engine.Use(middlewares.LoggerMiddleware())
-	s.engine.Use(middlewares.CorsMiddleware())
+	s.engine.Use(middlewares.CorsMiddleware(s.cfg))
 
 	// Health check
 	s.engine.GET("/health", func(c *gin.Context) {
@@ -101,6 +102,9 @@ func (s *Server) MapRoutes() {
 
 	// Student routes (exam participation)
 	studentHttp.Routes(v1, s.database, s.cache, s.queryRunner, authMiddleware)
+
+	// Chatbot routes (student SQL guidance)
+	chatbotHttp.Routes(v1, s.cfg, authMiddleware)
 
 	// Admin routes (user import, stats, sandbox management)
 	adminHttp.Routes(v1, s.database, s.cache, authMiddleware, s.cfg, s.queryRunner)

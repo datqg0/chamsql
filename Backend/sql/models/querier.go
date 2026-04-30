@@ -38,8 +38,10 @@ type Querier interface {
 	CountClassMembers(ctx context.Context, classID int64) (int64, error)
 	CountCorrectSubmissions(ctx context.Context, userID int64) (int64, error)
 	CountProblems(ctx context.Context) (int64, error)
+	CountProblemsAdmin(ctx context.Context) (int64, error)
 	CountProblemsByDifficulty(ctx context.Context) ([]CountProblemsByDifficultyRow, error)
 	CountProblemsPerTopic(ctx context.Context) ([]CountProblemsPerTopicRow, error)
+	CountSearchProblems(ctx context.Context, searchQuery string) (int64, error)
 	CountUserExamSubmissions(ctx context.Context, arg CountUserExamSubmissionsParams) (int64, error)
 	CountUserSubmissions(ctx context.Context, userID int64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
@@ -62,7 +64,7 @@ type Querier interface {
 	// EXAM SUBMISSIONS
 	// =============================================
 	CreateExamSubmission(ctx context.Context, arg CreateExamSubmissionParams) (ExamSubmission, error)
-	CreateExamSubmissionForStudent(ctx context.Context, arg CreateExamSubmissionForStudentParams) (ExamSubmission, error)
+	CreateExamSubmissionForStudent(ctx context.Context, arg CreateExamSubmissionForStudentParams) (CreateExamSubmissionForStudentRow, error)
 	// Excel Export Queries
 	CreateExcelExport(ctx context.Context, arg CreateExcelExportParams) (ExcelExport, error)
 	// PDF Upload Queries
@@ -95,10 +97,16 @@ type Querier interface {
 	FetchPendingEvents(ctx context.Context, limit int32) ([]FetchPendingEventsRow, error)
 	GetAIGeneratedContentByProblem(ctx context.Context, arg GetAIGeneratedContentByProblemParams) ([]AiGeneratedContent, error)
 	GetAIGeneratedContentByType(ctx context.Context, arg GetAIGeneratedContentByTypeParams) ([]AiGeneratedContent, error)
+	GetActiveUsersWeek(ctx context.Context) (int64, error)
+	GetAvgSolveTime(ctx context.Context) (int32, error)
 	GetClassByCode(ctx context.Context, code string) (Class, error)
 	GetClassByID(ctx context.Context, id int64) (Class, error)
 	GetClassExamByID(ctx context.Context, id int64) (GetClassExamByIDRow, error)
 	GetClassMember(ctx context.Context, arg GetClassMemberParams) (ClassMember, error)
+	// =============================================
+	// DASHBOARD / ANALYTICS QUERIES
+	// =============================================
+	GetDailySubmissionStats(ctx context.Context) ([]GetDailySubmissionStatsRow, error)
 	GetExamByID(ctx context.Context, id int64) (GetExamByIDRow, error)
 	// =============================================
 	// STUDENT EXAM EXECUTION (PHASE 4)
@@ -144,6 +152,7 @@ type Querier interface {
 	GetPDFUploadsByLecturer(ctx context.Context, arg GetPDFUploadsByLecturerParams) ([]PdfUpload, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
 	GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (ExamParticipant, error)
+	GetPassRatePerProblem(ctx context.Context, limit int32) ([]GetPassRatePerProblemRow, error)
 	// =============================================
 	// PERMISSIONS QUERIES
 	// =============================================
@@ -172,15 +181,24 @@ type Querier interface {
 	// =============================================
 	GetRolePermissions(ctx context.Context, roleID int32) ([]Permission, error)
 	GetStudentClasses(ctx context.Context, userID int64) ([]Class, error)
-	GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]ExamSubmission, error)
+	GetStudentSubmissionsForProblem(ctx context.Context, arg GetStudentSubmissionsForProblemParams) ([]GetStudentSubmissionsForProblemRow, error)
 	GetSubmissionByID(ctx context.Context, id int64) (GetSubmissionByIDRow, error)
+	GetSystemGradingStats(ctx context.Context) (GetSystemGradingStatsRow, error)
 	GetTestCaseTemplatesByProblem(ctx context.Context, problemID *int64) ([]TestCaseTemplate, error)
+	GetTopProblemsBySubmissions(ctx context.Context, limit int32) ([]GetTopProblemsBySubmissionsRow, error)
 	GetTopicByID(ctx context.Context, id int32) (Topic, error)
 	GetTopicBySlug(ctx context.Context, slug string) (Topic, error)
+	GetTopicChildren(ctx context.Context, parentID *int32) ([]GetTopicChildrenRow, error)
+	// =============================================
+	// TOPIC TREE QUERIES
+	// =============================================
+	GetTopicTree(ctx context.Context) ([]GetTopicTreeRow, error)
+	GetTopicWithAncestors(ctx context.Context, id int32) ([]GetTopicWithAncestorsRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByIdentifier(ctx context.Context, email string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
+	GetUserPerformanceTimeline(ctx context.Context, arg GetUserPerformanceTimelineParams) ([]GetUserPerformanceTimelineRow, error)
 	GetUserProgress(ctx context.Context, arg GetUserProgressParams) (UserProgress, error)
 	GetUserRoleIDs(ctx context.Context, userID int64) ([]int32, error)
 	// =============================================
@@ -207,8 +225,15 @@ type Querier interface {
 	ListPermissionsByCategory(ctx context.Context, category *string) ([]Permission, error)
 	ListProblemTestCases(ctx context.Context, problemID int64) ([]ProblemTestCase, error)
 	ListProblems(ctx context.Context, arg ListProblemsParams) ([]ListProblemsRow, error)
+	// =============================================
+	// ADMIN QUERIES (no is_public filter)
+	// =============================================
+	ListProblemsAdmin(ctx context.Context, arg ListProblemsAdminParams) ([]ListProblemsAdminRow, error)
 	ListProblemsByDifficulty(ctx context.Context, arg ListProblemsByDifficultyParams) ([]ListProblemsByDifficultyRow, error)
+	ListProblemsByDifficultyAdmin(ctx context.Context, arg ListProblemsByDifficultyAdminParams) ([]ListProblemsByDifficultyAdminRow, error)
+	ListProblemsByLecturer(ctx context.Context, arg ListProblemsByLecturerParams) ([]ListProblemsByLecturerRow, error)
 	ListProblemsByTopic(ctx context.Context, arg ListProblemsByTopicParams) ([]ListProblemsByTopicRow, error)
+	ListProblemsByTopicAdmin(ctx context.Context, arg ListProblemsByTopicAdminParams) ([]ListProblemsByTopicAdminRow, error)
 	ListPublicExams(ctx context.Context, arg ListPublicExamsParams) ([]ListPublicExamsRow, error)
 	ListRecentAttempts(ctx context.Context, arg ListRecentAttemptsParams) ([]ListRecentAttemptsRow, error)
 	ListResourceAuditLogs(ctx context.Context, arg ListResourceAuditLogsParams) ([]AuditLog, error)
@@ -247,6 +272,11 @@ type Querier interface {
 	// OUTBOX EVENTS
 	// =============================================
 	SaveOutboxEvent(ctx context.Context, arg SaveOutboxEventParams) (SaveOutboxEventRow, error)
+	// =============================================
+	// SEARCH QUERIES
+	// =============================================
+	SearchProblems(ctx context.Context, arg SearchProblemsParams) ([]SearchProblemsRow, error)
+	SearchProblemsAdmin(ctx context.Context, arg SearchProblemsAdminParams) ([]SearchProblemsAdminRow, error)
 	StartExam(ctx context.Context, arg StartExamParams) (ExamParticipant, error)
 	StartExamParticipant(ctx context.Context, arg StartExamParticipantParams) (ExamParticipant, error)
 	SubmitExam(ctx context.Context, arg SubmitExamParams) (ExamParticipant, error)
@@ -256,7 +286,7 @@ type Querier interface {
 	UpdateExam(ctx context.Context, arg UpdateExamParams) (Exam, error)
 	UpdateExamProblemPoints(ctx context.Context, arg UpdateExamProblemPointsParams) (ExamProblem, error)
 	UpdateExamStatus(ctx context.Context, arg UpdateExamStatusParams) (Exam, error)
-	UpdateExamSubmissionWithResult(ctx context.Context, arg UpdateExamSubmissionWithResultParams) (ExamSubmission, error)
+	UpdateExamSubmissionWithResult(ctx context.Context, arg UpdateExamSubmissionWithResultParams) (UpdateExamSubmissionWithResultRow, error)
 	UpdatePDFUploadError(ctx context.Context, arg UpdatePDFUploadErrorParams) (PdfUpload, error)
 	UpdatePDFUploadStatus(ctx context.Context, arg UpdatePDFUploadStatusParams) (PdfUpload, error)
 	UpdatePDFUploadWithExtraction(ctx context.Context, arg UpdatePDFUploadWithExtractionParams) (PdfUpload, error)
