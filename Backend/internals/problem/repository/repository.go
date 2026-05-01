@@ -16,7 +16,8 @@ type IProblemRepository interface {
 	ListByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicRow, error)
 	ListByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyRow, error)
 	ListAdmin(ctx context.Context, limit, offset int32) ([]models.ListProblemsAdminRow, error)
-	ListByLecturer(ctx context.Context, userID int64, limit, offset int32) ([]models.ListProblemsByLecturerRow, error)
+	ListByCreator(ctx context.Context, creatorID int64, limit, offset int32) ([]models.ListProblemsByCreatorRow, error)
+	CountByCreator(ctx context.Context, creatorID int64) (int64, error)
 	ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicAdminRow, error)
 	ListAdminByDifficulty(ctx context.Context, difficulty string, limit, offset int32) ([]models.ListProblemsByDifficultyAdminRow, error)
 	// Search
@@ -34,6 +35,7 @@ type IProblemRepository interface {
 	// User Progress
 	UpsertProgress(ctx context.Context, userID, problemID int64) error
 	MarkProblemSolved(ctx context.Context, userID, problemID int64, bestTimeMs int32) error
+	GetProgress(ctx context.Context, userID, problemID int64) (*models.UserProgress, error)
 }
 
 type problemRepository struct {
@@ -113,13 +115,16 @@ func (r *problemRepository) ListAdmin(ctx context.Context, limit, offset int32) 
 	})
 }
 
-func (r *problemRepository) ListByLecturer(ctx context.Context, userID int64, limit, offset int32) ([]models.ListProblemsByLecturerRow, error) {
-	lecturerID := &userID
-	return r.queries.ListProblemsByLecturer(ctx, models.ListProblemsByLecturerParams{
-		CreatedBy: lecturerID,
+func (r *problemRepository) ListByCreator(ctx context.Context, creatorID int64, limit, offset int32) ([]models.ListProblemsByCreatorRow, error) {
+	return r.queries.ListProblemsByCreator(ctx, models.ListProblemsByCreatorParams{
+		CreatedBy: &creatorID,
 		Limit:     limit,
 		Offset:    offset,
 	})
+}
+
+func (r *problemRepository) CountByCreator(ctx context.Context, creatorID int64) (int64, error) {
+	return r.queries.CountProblemsByCreator(ctx, &creatorID)
 }
 
 func (r *problemRepository) ListAdminByTopic(ctx context.Context, topicID int32, limit, offset int32) ([]models.ListProblemsByTopicAdminRow, error) {
@@ -209,4 +214,15 @@ func (r *problemRepository) MarkProblemSolved(ctx context.Context, userID, probl
 		BestTimeMs: &bestTimeMs,
 	})
 	return err
+}
+
+func (r *problemRepository) GetProgress(ctx context.Context, userID, problemID int64) (*models.UserProgress, error) {
+	progress, err := r.queries.GetUserProblemProgress(ctx, models.GetUserProblemProgressParams{
+		UserID:    userID,
+		ProblemID: problemID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &progress, nil
 }

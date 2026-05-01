@@ -8,15 +8,17 @@ import (
 
 	"backend/configs"
 	"backend/db"
+	aiHttp "backend/internals/ai/controller/http"
 	aiUsecase "backend/internals/ai/usecase"
 	examRepository "backend/internals/exam/repository"
 	examUsecase "backend/internals/exam/usecase"
 	pdfHttp "backend/internals/pdf/controller/http"
 	pdfRepository "backend/internals/pdf/repository"
 	pdfUsecase "backend/internals/pdf/usecase"
+	problemHttp "backend/internals/problem/controller/http"
 	problemRepo "backend/internals/problem/repository"
+	problemUsecase "backend/internals/problem/usecase"
 	httpServer "backend/internals/server/http"
-	submissionConsumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
 	submissionRepository "backend/internals/submission/repository"
 	submissionUsecase "backend/internals/submission/usecase"
 	"backend/pkgs/cronjob"
@@ -29,6 +31,11 @@ import (
 	"backend/pkgs/permissions"
 	"backend/pkgs/redis"
 	"backend/pkgs/runner"
+	chatbotHttp "backend/internals/chatbot/controller/http"
+	chatbotTools "backend/internals/chatbot/tools"
+	chatbotUsecase "backend/internals/chatbot/usecase"
+	miniopkg "backend/pkgs/minio"
+	"backend/sql/models"
 )
 
 // Container wraps dig.Container for dependency injection
@@ -53,12 +60,14 @@ func NewContainer() (*Container, error) {
 		provideJWTProvider,
 		provideRunner,
 		providePermissionService,
+		provideMinio,
 
 		// PDF & AI Services (Phase 4)
 		providePDFParser,
 		providePatternMatcher,
 		provideHuggingFaceClient,
 		provideOpenAIClient,
+		provideLLMClient,
 		provideAISolutionGenerator,
 		provideAITestCaseGenerator,
 		provideAITestCaseValidator,
@@ -66,18 +75,26 @@ func NewContainer() (*Container, error) {
 		providePDFRepository,
 		providePDFUploadManager,
 		providePDFHandler,
+		provideAIHandler,
 
 		// Submission & Grading Services (Phase 4)
 		provideSubmissionRepository,
 		provideProblemRepository,
+		provideProblemUseCase,
+		provideProblemHandler,
 		provideGradingService,
-		provideGradingConsumer,
 
 		// Exam Timer & Cronjob (Phase 3)
 		provideExamRepository,
 		provideExamOutboxRepository,
 		provideExamTimerUseCase,
+		provideOutboxRelayTask,
 		provideCronjobScheduler,
+
+		// Chatbot (Phase 4 Upgrade)
+		provideToolExecutor,
+		provideChatbotUseCase,
+		provideChatbotHandler,
 
 		// Server
 		httpServer.NewServer,
@@ -161,6 +178,22 @@ func providePermissionService(database *db.Database) permissions.PermissionServi
 	return permissions.NewPermissionService(database)
 }
 
+func provideMinio(cfg *configs.Config) miniopkg.IUploadService {
+	client, err := miniopkg.NewMinioClient(
+		cfg.MinioEndpoint,
+		cfg.MinioAccessKey,
+		cfg.MinioSecretKey,
+		cfg.MinioBucket,
+		cfg.MinioBaseURL,
+		cfg.MinioUseSSL,
+	)
+	if err != nil {
+		logger.Error("Failed to initialize MinIO: %v", err)
+		return nil
+	}
+	return client
+}
+
 // ===== PHASE 4: PDF & AI Services =====
 
 func providePDFParser() *pdf.PDFParser {
@@ -177,7 +210,7 @@ func provideHuggingFaceClient(cfg *configs.Config) *ai.HuggingFaceClient {
 	}
 	return ai.NewHuggingFaceClient(ai.HuggingFaceConfig{
 		APIKey:  cfg.HuggingFaceAPIKey,
-		Timeout: 30, // 30 seconds
+		Timeout: 30 * time.Second, // 30 seconds
 	})
 }
 
@@ -191,42 +224,48 @@ func provideOpenAIClient(cfg *configs.Config) *ai.OpenAIClient {
 	})
 }
 
+func provideLLMClient(
+	cfg *configs.Config,
+	hfClient *ai.HuggingFaceClient,
+	oaClient *ai.OpenAIClient,
+) ai.LLMClient {
+	switch cfg.AIProvider {
+	case "openai":
+		if oaClient != nil {
+			return oaClient
+		}
+		// Fallback nếu OpenAI key chưa set
+		logger.Warn("AIProvider=openai nhưng OPENAI_API_KEY trống, fallback HuggingFace")
+		if hfClient != nil {
+			return hfClient
+		}
+		return nil
+	case "huggingface":
+		if hfClient != nil {
+			return hfClient
+		}
+		logger.Warn("AIProvider=huggingface nhưng HUGGINGFACE_API_KEY trống")
+		return nil
+	default:
+		logger.Warn("AIProvider không hợp lệ: %s, dùng pattern-only mode", cfg.AIProvider)
+		return nil
+	}
+}
+
 func provideAISolutionGenerator(
 	cfg *configs.Config,
 	patternMatcher *ai.PatternMatcher,
-	hfClient *ai.HuggingFaceClient,
-	oaClient *ai.OpenAIClient,
+	llmClient ai.LLMClient,
 ) aiUsecase.IAISolutionGenerator {
-	var client ai.LLMClient
-	provider := cfg.AIProvider
-
-	if provider == "openai" && oaClient != nil {
-		client = oaClient
-	} else if hfClient != nil {
-		client = hfClient
-		provider = "huggingface"
-	}
-
-	return aiUsecase.NewAISolutionGenerator(patternMatcher, client, provider)
+	return aiUsecase.NewAISolutionGenerator(patternMatcher, llmClient, cfg.AIProvider)
 }
 
 func provideAITestCaseGenerator(
 	cfg *configs.Config,
 	database *db.Database,
-	hfClient *ai.HuggingFaceClient,
-	oaClient *ai.OpenAIClient,
+	llmClient ai.LLMClient,
 ) aiUsecase.IAITestCaseGenerator {
-	var client ai.LLMClient
-	provider := cfg.AIProvider
-
-	if provider == "openai" && oaClient != nil {
-		client = oaClient
-	} else if hfClient != nil {
-		client = hfClient
-		provider = "huggingface"
-	}
-
-	return aiUsecase.NewAITestCaseGenerator(database, client, provider)
+	return aiUsecase.NewAITestCaseGenerator(database, llmClient, cfg.AIProvider)
 }
 
 func provideAITestCaseValidator(database *db.Database) aiUsecase.IAITestCaseValidator {
@@ -242,6 +281,10 @@ func provideAIOrchestrator(
 	return aiUsecase.NewAIOrchestrator(solutionGenerator, testCaseGenerator, testCaseValidator, database)
 }
 
+func provideAIHandler(orchestrator aiUsecase.IAIOrchestrator) *aiHttp.AIHandler {
+	return aiHttp.NewAIHandler(orchestrator)
+}
+
 func providePDFRepository(database *db.Database) pdfRepository.IPDFRepository {
 	return pdfRepository.NewPDFRepository(database)
 }
@@ -254,6 +297,7 @@ func providePDFUploadManager(
 	testCaseValidator aiUsecase.IAITestCaseValidator,
 	aiOrchestrator aiUsecase.IAIOrchestrator,
 	probRepo problemRepo.IProblemRepository,
+	storage miniopkg.IUploadService,
 ) pdfUsecase.IUploadManager {
 	return pdfUsecase.NewUploadManager(
 		pdfRepo,
@@ -263,11 +307,12 @@ func providePDFUploadManager(
 		testCaseValidator,
 		aiOrchestrator,
 		probRepo,
+		storage,
 	)
 }
 
-func providePDFHandler(uploadManager pdfUsecase.IUploadManager) *pdfHttp.PDFHandler {
-	return pdfHttp.NewPDFHandler(uploadManager)
+func providePDFHandler(uploadManager pdfUsecase.IUploadManager, storage miniopkg.IUploadService) *pdfHttp.PDFHandler {
+	return pdfHttp.NewPDFHandler(uploadManager, storage)
 }
 
 // ===== Submission & Grading Services =====
@@ -280,20 +325,20 @@ func provideProblemRepository(database *db.Database) problemRepo.IProblemReposit
 	return problemRepo.NewProblemRepository(database)
 }
 
+func provideProblemUseCase(repo problemRepo.IProblemRepository, cache redis.IRedis) problemUsecase.IProblemUseCase {
+	return problemUsecase.NewProblemUseCase(repo, cache)
+}
+
+func provideProblemHandler(uc problemUsecase.IProblemUseCase, storage miniopkg.IUploadService) *problemHttp.ProblemHandler {
+	return problemHttp.NewProblemHandler(uc, storage)
+}
+
 func provideGradingService(
 	subRepo submissionRepository.ISubmissionRepository,
 	probRepo problemRepo.IProblemRepository,
 	queryRunner runner.Runner,
 ) submissionUsecase.IGradingService {
 	return submissionUsecase.NewGradingService(subRepo, probRepo, queryRunner)
-}
-
-func provideGradingConsumer(
-	kafkaClient kafka.IKafka,
-	database *db.Database,
-	gradingService submissionUsecase.IGradingService,
-) *submissionConsumer.GradingConsumer {
-	return submissionConsumer.NewGradingConsumer(kafkaClient, database, gradingService)
 }
 
 // ===== Exam Timer & Cronjob Services =====
@@ -313,14 +358,38 @@ func provideExamTimerUseCase(
 	return examUsecase.NewExamTimerUseCase(examRepo, outboxRepo)
 }
 
-func provideCronjobScheduler(examTimerUseCase examUsecase.IExamTimerUseCase) *cronjob.Scheduler {
+func provideOutboxRelayTask(database *db.Database, kafkaClient kafka.IKafka) *cronjob.OutboxRelayTask {
+	return cronjob.NewOutboxRelayTask(database, kafkaClient)
+}
+
+func provideCronjobScheduler(
+	examTimerUseCase examUsecase.IExamTimerUseCase,
+	outboxRelay *cronjob.OutboxRelayTask,
+) *cronjob.Scheduler {
 	scheduler := cronjob.NewScheduler()
-	// Register exam timer task to run every 20 seconds
+	// Register exam timer task to run every 1 minute (as requested)
 	scheduler.Register(
 		examUsecase.NewExamTimerTask(examTimerUseCase),
-		20*time.Second,
+		1*time.Minute,
 	)
+	// Register outbox relay task to run every 5 seconds
+	scheduler.Register(outboxRelay, 5*time.Second)
 	return scheduler
+}
+
+// ===== Chatbot Services (Phase 4 Upgrade) =====
+
+func provideToolExecutor(database *db.Database, runner runner.Runner) *chatbotTools.ToolExecutor {
+	queries := models.New(database.GetPool())
+	return chatbotTools.NewToolExecutor(queries, runner)
+}
+
+func provideChatbotUseCase(cfg *configs.Config, executor *chatbotTools.ToolExecutor, redis redis.IRedis) chatbotUsecase.IChatbotUseCase {
+	return chatbotUsecase.NewChatbotUseCase(cfg, executor, redis)
+}
+
+func provideChatbotHandler(uc chatbotUsecase.IChatbotUseCase) *chatbotHttp.ChatbotHandler {
+	return chatbotHttp.NewChatbotHandler(uc)
 }
 
 // Invoke runs a function with dependencies injected

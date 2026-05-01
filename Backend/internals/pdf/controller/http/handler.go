@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"backend/internals/pdf/controller/dto"
 	"backend/internals/pdf/usecase"
+	miniopkg "backend/pkgs/minio"
 	"backend/pkgs/middlewares"
 	"backend/pkgs/response"
 
@@ -20,12 +22,14 @@ import (
 // PDFHandler handles PDF upload operations
 type PDFHandler struct {
 	uploadManager usecase.IUploadManager
+	storage       miniopkg.IUploadService
 }
 
 // NewPDFHandler creates a new PDF handler
-func NewPDFHandler(uploadManager usecase.IUploadManager) *PDFHandler {
+func NewPDFHandler(uploadManager usecase.IUploadManager, storage miniopkg.IUploadService) *PDFHandler {
 	return &PDFHandler{
 		uploadManager: uploadManager,
+		storage:       storage,
 	}
 }
 
@@ -59,7 +63,7 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Save uploaded file to OS temp directory (cross-platform)
+	// Save uploaded file to OS temp directory for extraction
 	tmpDir := filepath.Join(os.TempDir(), "chamsql", "pdf_uploads")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		response.InternalServerError(c, "Failed to prepare upload directory")
@@ -72,32 +76,87 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Create upload record
-	upload, err := h.uploadManager.HandleUpload(c.Request.Context(), lecturerID, filePath, file.Filename, file.Filename)
+	// Upload lên MinIO — lưu vĩnh viễn (bucket: pdf-files)
+	minioURL, err := h.storage.UploadFileFromPath(c.Request.Context(), filePath, "pdf-files", "application/pdf")
 	if err != nil {
+		_ = os.Remove(filePath)
+		response.InternalServerError(c, "Failed to upload to storage: "+err.Error())
+		return
+	}
+
+	// Create upload record với MinIO URL
+	upload, err := h.uploadManager.HandleUpload(c.Request.Context(), lecturerID, minioURL, file.Filename, file.Filename)
+	if err != nil {
+		_ = os.Remove(filePath)
 		response.InternalServerError(c, err.Error())
 		return
 	}
 
-	// Return 202 Accepted ngay lập tức, processing chạy background
+	// Return 202 Accepted ngay lập tức
 	c.JSON(http.StatusAccepted, dto.PDFUploadResponse{
 		ID:        upload.ID,
 		Status:    upload.Status,
 		FileName:  upload.FileName,
 		CreatedAt: upload.CreatedAt,
-		Message:   "PDF upload accepted. Processing in background — poll /status to track progress.",
+		Message:   "PDF upload accepted. Processing in background.",
 	})
 
 	// Chạy extraction + AI generation trong goroutine riêng.
-	// Dùng context.Background() để không bị cancel khi HTTP request kết thúc.
-	go func(uploadID int64) {
+	go func(uploadID int64, localPath string) {
 		bgCtx := context.Background()
+
 		if err := h.uploadManager.ProcessExtraction(bgCtx, uploadID); err != nil {
-			// Error đã được lưu vào DB bởi ProcessExtraction, không cần log thêm
+			fmt.Printf("PDF extraction failed for upload %d: %v\n", uploadID, err)
+			// Cập nhật status = "failed" trong DB để frontend biết
+			if updateErr := h.uploadManager.MarkUploadFailed(bgCtx, uploadID, err.Error()); updateErr != nil {
+				fmt.Printf("Failed to mark upload as failed: %v\n", updateErr)
+			}
+			_ = os.Remove(localPath)
 			return
 		}
-		_ = h.uploadManager.GenerateAIContent(bgCtx, uploadID)
-	}(upload.ID)
+
+		if err := h.uploadManager.GenerateAIContent(bgCtx, uploadID); err != nil {
+			fmt.Printf("AI content generation failed for upload %d: %v\n", uploadID, err)
+			// AI thất bại không critical — status vẫn là "extracted" để lecturer review thủ công
+		}
+
+		// Xóa local temp sau khi extract xong
+		_ = os.Remove(localPath)
+	}(upload.ID, filePath)
+}
+
+// DownloadPDF godoc
+// @Summary     Get presigned download URL for original PDF
+// @Tags        PDF Upload
+// @Produce     json
+// @Param       id path int true "Upload ID"
+// @Success     200 {object} map[string]interface{}
+// @Router      /lecturer/pdf/{id}/download [get]
+func (h *PDFHandler) DownloadPDF(c *gin.Context) {
+	uploadID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid upload ID")
+		return
+	}
+
+	upload, err := h.uploadManager.GetUploadStatus(c.Request.Context(), uploadID)
+	if err != nil {
+		response.NotFound(c, "Upload record not found")
+		return
+	}
+
+	// Gen presigned URL (24h)
+	presignedURL, err := h.storage.GetPresignedURL(c.Request.Context(), upload.FilePath, 24*time.Hour)
+	if err != nil {
+		response.InternalServerError(c, "Failed to generate download URL: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"download_url": presignedURL,
+		"file_name":    upload.FileName,
+		"expires_in":   "24h",
+	})
 }
 
 // GetStatus godoc

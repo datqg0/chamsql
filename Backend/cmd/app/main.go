@@ -11,7 +11,6 @@ import (
 	"backend/di"
 	exam_consumer "backend/internals/exam/infrastructure/messaging/kafka/consumer"
 	httpServer "backend/internals/server/http"
-	submission_consumer "backend/internals/submission/infrastructure/messaging/kafka/consumer"
 	"backend/pkgs/cronjob"
 	"backend/pkgs/kafka"
 	"backend/pkgs/logger"
@@ -45,13 +44,10 @@ func main() {
 			}
 		}
 
-		// Start Kafka consumers for exam and submission domains
+		// Start Kafka consumers for exam domain
 		if kafkaClient != nil {
 			examEventConsumer := exam_consumer.NewExamEventConsumer(kafkaClient, database)
 			go examEventConsumer.Start(ctx)
-
-			submissionEventConsumer := submission_consumer.NewSubmissionEventConsumer(kafkaClient, database)
-			go submissionEventConsumer.Start(ctx)
 		}
 
 		// Start cronjob scheduler

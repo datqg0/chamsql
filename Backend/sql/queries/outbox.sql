@@ -10,7 +10,7 @@ RETURNING id, topic, payload, status;
 -- name: FetchPendingEvents :many
 SELECT id, topic, payload
 FROM outbox_events
-WHERE status = 'pending'
+WHERE status = 'pending' AND retry_count < 3
 ORDER BY created_at ASC
 LIMIT $1;
 
@@ -23,6 +23,9 @@ WHERE id = $1;
 UPDATE outbox_events
 SET status = 'failed', retry_count = retry_count + 1, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
+
+-- name: CountStuckEvents :one
+SELECT COUNT(*) FROM outbox_events WHERE status = 'pending' AND retry_count >= 3;
 
 -- =============================================
 -- PROCESSED EVENTS (for idempotent consumers)

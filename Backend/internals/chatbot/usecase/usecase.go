@@ -1,297 +1,247 @@
 package usecase
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"time"
+    "context"
+    "fmt"
+    "strings"
+    "time"
 
-	"backend/configs"
-	"backend/internals/chatbot/controller/dto"
+    "backend/configs"
+    "backend/internals/chatbot/controller/dto"
+    "backend/internals/chatbot/tools"
+    "backend/pkgs/ai"
+    pkgredis "backend/pkgs/redis"
 
-	"github.com/google/uuid"
+    "github.com/google/uuid"
 )
 
-// IChatbotUseCase defines chatbot operations for student guidance
+const chatSystemPrompt = `Bạn là trợ lý SQL thông minh tên ChamsBot, hỗ trợ sinh viên học SQL trong hệ thống ChamsQL.
+
+NHIỆM VỤ:
+1. Giúp sinh viên hiểu lỗi và cách sửa câu SQL
+2. Gợi ý hướng tiếp cận bài toán — KHÔNG cho đáp án trực tiếp
+3. Giải thích SQL concept bằng tiếng Việt dễ hiểu có ví dụ
+4. Dùng tools để lấy thông tin thực tế trước khi trả lời
+
+NGUYÊN TẮC SỬ DỤNG TOOLS:
+- Khi sinh viên hỏi về bài cụ thể → gọi get_problem_schema trước
+- Khi sinh viên paste SQL bị lỗi → gọi run_student_sql để xem lỗi thật
+- Khi cần so sánh → gọi compare_with_solution, KHÔNG tiết lộ nội dung đáp án
+- Khi hỏi về concept → gọi explain_sql_concept
+
+PHONG CÁCH TRẢ LỜI:
+- Tiếng Việt, thân thiện, khuyến khích
+- Dùng Markdown: code block cho SQL, bullet points cho danh sách
+- ⚠️ BẮT BUỘC khi dùng bảng Markdown: Mỗi dòng bảng phải xuống dòng riêng để hiển thị đúng.
+  Ví dụ:
+  | Cột 1 | Cột 2 |
+  |-------|-------|
+  | Data  | Data  |
+- Ngắn gọn, có ví dụ cụ thể
+- Kết thúc bằng câu hỏi gợi ý hoặc bước tiếp theo`
+
 type IChatbotUseCase interface {
-	Ask(ctx context.Context, req *dto.ChatRequest) (*dto.ChatResponse, error)
+    Ask(ctx context.Context, req *dto.ChatRequest) (*dto.ChatResponse, error)
 }
 
 type chatbotUseCase struct {
-	cfg        *configs.Config
-	httpClient *http.Client
+    cfg      *configs.Config
+    aiClient ai.IChatLLMClient
+    executor *tools.ToolExecutor
+    redis    pkgredis.IRedis
 }
 
-// NewChatbotUseCase creates a new chatbot usecase
-func NewChatbotUseCase(cfg *configs.Config) IChatbotUseCase {
-	return &chatbotUseCase{
-		cfg: cfg,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-	}
+func NewChatbotUseCase(cfg *configs.Config, executor *tools.ToolExecutor, redis pkgredis.IRedis) IChatbotUseCase {
+    var aiClient ai.IChatLLMClient
+    if cfg.OpenAIAPIKey != "" {
+        aiClient = ai.NewOpenAIChatClient(cfg.OpenAIAPIKey, cfg.OpenAIBaseURL, cfg.OpenAIModel)
+    }
+    return &chatbotUseCase{
+        cfg:      cfg,
+        aiClient: aiClient,
+        executor: executor,
+        redis:    redis,
+    }
 }
 
-// Ask processes a student question and returns guidance
 func (u *chatbotUseCase) Ask(ctx context.Context, req *dto.ChatRequest) (*dto.ChatResponse, error) {
-	startTime := time.Now()
+	start := time.Now()
 
-	// Generate conversation ID if not provided (multi-turn)
+	// Rate limit: tối đa 30 requests/user/giờ
+	if req.UserID != nil && u.redis != nil {
+		rateLimitKey := fmt.Sprintf("chatbot_rl:%d", *req.UserID)
+		var count int
+		if err := u.redis.Get(rateLimitKey, &count); err != nil {
+			// Key chưa tồn tại = lần đầu gọi trong giờ này
+			count = 0
+		}
+		if count >= 30 {
+			return nil, fmt.Errorf("bạn đã dùng hết lượt hỗ trợ AI trong giờ này (tối đa 30 lượt/giờ). Vui lòng thử lại sau")
+		}
+		newCount := count + 1
+		// Tăng count và set TTL 1 giờ
+		if err := u.redis.SetWithExpiration(rateLimitKey, newCount, 1*time.Hour); err != nil {
+			// Log nhưng không block request nếu Redis lỗi
+			fmt.Printf("Failed to update rate limit counter: %v\n", err)
+		}
+	}
+
 	conversationID := req.ConversationID
-	if conversationID == "" {
-		conversationID = uuid.New().String()
-	}
+    if conversationID == "" {
+        conversationID = uuid.New().String()
+    }
 
-	// Build the prompt with problem context
-	prompt := u.buildPrompt(req)
+    // Fallback nếu không có OpenAI key
+    if u.aiClient == nil {
+        reply := u.patternResponse(req)
+        return &dto.ChatResponse{
+            Reply:          reply,
+            ConversationID: conversationID,
+            Provider:       "pattern",
+            ResponseTimeMs: time.Since(start).Milliseconds(),
+        }, nil
+    }
 
-	// Try HuggingFace API first
-	if u.cfg.HuggingFaceAPIKey != "" {
-		reply, err := u.callHuggingFace(ctx, prompt)
-		if err == nil && reply != "" {
-			suggestions := u.generateSuggestions(req)
-			return &dto.ChatResponse{
-				Reply:          reply,
-				Suggestions:    suggestions,
-				Hints:          u.generateHints(req),
-				ConversationID: conversationID,
-				Provider:       "huggingface",
-				ResponseTimeMs: time.Since(startTime).Milliseconds(),
-			}, nil
-		}
-	}
+    // Load history từ Redis
+    history := u.loadHistory(conversationID)
 
-	// Fallback to pattern-based response
-	reply := u.patternResponse(req)
-	return &dto.ChatResponse{
-		Reply:          reply,
-		Suggestions:    u.generateSuggestions(req),
-		Hints:          u.generateHints(req),
-		ConversationID: conversationID,
-		Provider:       "pattern",
-		ResponseTimeMs: time.Since(startTime).Milliseconds(),
-	}, nil
+    // Build user message với context
+    userContent := u.buildUserMessage(req)
+    history = append(history, ai.ChatMessage{Role: "user", Content: userContent})
+
+    // Prepend system prompt
+    messages := make([]ai.ChatMessage, 0, len(history)+1)
+    messages = append(messages, ai.ChatMessage{Role: "system", Content: chatSystemPrompt})
+    messages = append(messages, history...)
+
+    var finalReply string
+    var toolsUsed []string
+
+    // Tool calling loop (tối đa 5 vòng)
+    for i := 0; i < 5; i++ {
+        resp, err := u.aiClient.Chat(ctx, messages, tools.AllTools)
+        if err != nil {
+            // Fallback về pattern nếu AI fail
+            finalReply = u.patternResponse(req)
+            break
+        }
+        if len(resp.Choices) == 0 {
+            break
+        }
+
+        assistantMsg := resp.Choices[0].Message
+
+        // AI không gọi tool → trả lời xong
+        if len(assistantMsg.ToolCalls) == 0 {
+            finalReply = assistantMsg.Content
+            history = append(history, assistantMsg)
+            break
+        }
+
+        // AI gọi tools → execute từng tool
+        messages = append(messages, assistantMsg)
+
+        for _, tc := range assistantMsg.ToolCalls {
+            toolsUsed = append(toolsUsed, tc.Function.Name)
+
+            result, err := u.executor.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
+            if err != nil {
+                result = fmt.Sprintf("Tool error: %v", err)
+            }
+
+            messages = append(messages, ai.ChatMessage{
+                Role:       "tool",
+                Content:    result,
+                ToolCallID: tc.ID,
+                Name:       tc.Function.Name,
+            })
+        }
+        // Tiếp tục loop — AI phân tích tool results và quyết định tiếp theo
+    }
+
+    if finalReply == "" {
+        finalReply = "Xin lỗi, mình gặp sự cố khi xử lý câu hỏi này. Bạn thử hỏi lại nhé!"
+    }
+
+    // Lưu history (chỉ lưu user + assistant, không lưu tool messages)
+    history = append(history, ai.ChatMessage{Role: "assistant", Content: finalReply})
+    u.saveHistory(conversationID, history)
+
+    return &dto.ChatResponse{
+        Reply:          finalReply,
+        ConversationID: conversationID,
+        Provider:       "openai",
+        ToolsUsed:      toolsUsed,
+        ResponseTimeMs: time.Since(start).Milliseconds(),
+    }, nil
 }
 
-// buildPrompt constructs the AI prompt with problem context
-func (u *chatbotUseCase) buildPrompt(req *dto.ChatRequest) string {
-	var sb strings.Builder
+func (u *chatbotUseCase) buildUserMessage(req *dto.ChatRequest) string {
+    var sb strings.Builder
+    sb.WriteString(req.Message)
 
-	sb.WriteString("Bạn là một trợ lý hướng dẫn SQL thông minh cho sinh viên. ")
-	sb.WriteString("Hãy giúp sinh viên hiểu cách viết câu truy vấn SQL đúng, ")
-	sb.WriteString("nhưng KHÔNG đưa ra lời giải trực tiếp. Hướng dẫn từng bước.\n\n")
+    if req.ProblemID != nil {
+        sb.WriteString(fmt.Sprintf("\n\n[Context: problem_id=%d", *req.ProblemID))
+        if req.ProblemTitle != "" {
+            sb.WriteString(fmt.Sprintf(", title=\"%s\"", req.ProblemTitle))
+        }
+        if req.UserID != nil {
+            sb.WriteString(fmt.Sprintf(", user_id=%d", *req.UserID))
+        }
+        sb.WriteString("]")
+    }
 
-	if req.ProblemTitle != "" {
-		sb.WriteString(fmt.Sprintf("Bài toán: %s\n", req.ProblemTitle))
-	}
-	if req.ProblemDesc != "" {
-		sb.WriteString(fmt.Sprintf("Mô tả: %s\n", req.ProblemDesc))
-	}
-	if req.StudentSQL != "" {
-		sb.WriteString(fmt.Sprintf("Câu SQL của sinh viên:\n```sql\n%s\n```\n", req.StudentSQL))
-	}
-	if req.ErrorMessage != "" {
-		sb.WriteString(fmt.Sprintf("Lỗi gặp phải: %s\n", req.ErrorMessage))
-	}
+    if req.StudentSQL != "" {
+        sb.WriteString(fmt.Sprintf("\n\n[Câu SQL của sinh viên:\n```sql\n%s\n```]", req.StudentSQL))
+    }
 
-	sb.WriteString(fmt.Sprintf("\nCâu hỏi của sinh viên: %s\n", req.Message))
-	sb.WriteString("\nHãy trả lời bằng tiếng Việt, hướng dẫn cụ thể nhưng không cho đáp án.")
+    if req.ErrorMessage != "" {
+        sb.WriteString(fmt.Sprintf("\n\n[Thông báo lỗi: %s]", req.ErrorMessage))
+    }
 
-	return sb.String()
+    return sb.String()
 }
 
-// callHuggingFace calls HuggingFace Inference API
-func (u *chatbotUseCase) callHuggingFace(ctx context.Context, prompt string) (string, error) {
-	// Use a conversational model — Mistral or similar
-	apiURL := "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
-
-	payload := map[string]interface{}{
-		"inputs": prompt,
-		"parameters": map[string]interface{}{
-			"max_new_tokens":  512,
-			"temperature":     0.7,
-			"top_p":           0.9,
-			"return_full_text": false,
-		},
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+u.cfg.HuggingFaceAPIKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := u.httpClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("HuggingFace API error (status %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	var result []struct {
-		GeneratedText string `json:"generated_text"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-
-	if len(result) == 0 || result[0].GeneratedText == "" {
-		return "", fmt.Errorf("empty response from HuggingFace")
-	}
-
-	return result[0].GeneratedText, nil
+func (u *chatbotUseCase) loadHistory(conversationID string) []ai.ChatMessage {
+    if u.redis == nil {
+        return []ai.ChatMessage{}
+    }
+    key := "chat_history:" + conversationID
+    var history []ai.ChatMessage
+    if err := u.redis.Get(key, &history); err != nil {
+        return []ai.ChatMessage{}
+    }
+    // Giới hạn 20 messages gần nhất
+    if len(history) > 20 {
+        history = history[len(history)-20:]
+    }
+    return history
 }
 
-// patternResponse generates a helpful response based on error patterns
+func (u *chatbotUseCase) saveHistory(conversationID string, history []ai.ChatMessage) {
+    if u.redis == nil {
+        return
+    }
+    key := "chat_history:" + conversationID
+    _ = u.redis.SetWithExpiration(key, history, 2*time.Hour)
+}
+
+// patternResponse là fallback khi không có AI key
 func (u *chatbotUseCase) patternResponse(req *dto.ChatRequest) string {
-	msg := strings.ToLower(req.Message)
-	errMsg := strings.ToLower(req.ErrorMessage)
-	sql := strings.ToLower(req.StudentSQL)
+    msg := strings.ToLower(req.Message)
+    errMsg := strings.ToLower(req.ErrorMessage)
 
-	// Error-based patterns
-	if strings.Contains(errMsg, "syntax error") {
-		return "Câu SQL của bạn có lỗi cú pháp. Hãy kiểm tra:\n" +
-			"1. Đã đóng đủ dấu ngoặc () chưa?\n" +
-			"2. Các từ khóa SQL (SELECT, FROM, WHERE...) có đúng thứ tự không?\n" +
-			"3. Tên bảng và cột có chính xác không?\n" +
-			"4. Dấu phẩy giữa các cột đã đủ chưa?"
-	}
-
-	if strings.Contains(errMsg, "column") && strings.Contains(errMsg, "does not exist") {
-		return "Cột bạn sử dụng không tồn tại trong bảng. Hãy kiểm tra:\n" +
-			"1. Xem lại tên cột có đúng chính tả không\n" +
-			"2. Nếu JOIN nhiều bảng, hãy dùng alias (VD: t.column_name)\n" +
-			"3. Kiểm tra xem cột đó thuộc bảng nào"
-	}
-
-	if strings.Contains(errMsg, "relation") && strings.Contains(errMsg, "does not exist") {
-		return "Tên bảng bạn sử dụng không tồn tại. Hãy kiểm tra:\n" +
-			"1. Tên bảng có đúng chính tả không?\n" +
-			"2. Có đang dùng đúng schema không?\n" +
-			"3. Bảng có thể có tên khác (số nhiều/ít)"
-	}
-
-	if strings.Contains(errMsg, "timeout") {
-		return "Câu truy vấn bị timeout. Gợi ý:\n" +
-			"1. Kiểm tra xem có vòng lặp vô hạn (subquery đệ quy) không\n" +
-			"2. Thêm LIMIT để giới hạn kết quả\n" +
-			"3. Sử dụng WHERE để lọc dữ liệu trước khi xử lý\n" +
-			"4. Tránh SELECT * khi không cần thiết"
-	}
-
-	if strings.Contains(errMsg, "group by") || strings.Contains(errMsg, "aggregate") {
-		return "Lỗi liên quan đến GROUP BY. Hãy nhớ:\n" +
-			"1. Mọi cột trong SELECT không nằm trong hàm tổng hợp (SUM, COUNT...) phải có trong GROUP BY\n" +
-			"2. Nếu dùng HAVING, nó phải đi sau GROUP BY\n" +
-			"3. Không thể dùng alias trong WHERE, dùng trong HAVING thay thế"
-	}
-
-	// Query pattern suggestions
-	if strings.Contains(msg, "join") || strings.Contains(msg, "nối") {
-		return "Về JOIN trong SQL:\n" +
-			"- INNER JOIN: Chỉ lấy các bản ghi có trong cả 2 bảng\n" +
-			"- LEFT JOIN: Lấy tất cả từ bảng trái, bảng phải có thể NULL\n" +
-			"- RIGHT JOIN: Ngược lại LEFT JOIN\n" +
-			"Ví dụ: SELECT a.name, b.score FROM students a JOIN scores b ON a.id = b.student_id\n\n" +
-			"Hãy kiểm tra điều kiện ON có đúng khóa ngoại không."
-	}
-
-	if strings.Contains(msg, "subquery") || strings.Contains(msg, "truy vấn con") {
-		return "Subquery (truy vấn con) có 3 cách dùng chính:\n" +
-			"1. Trong WHERE: WHERE column IN (SELECT ...)\n" +
-			"2. Trong FROM: SELECT * FROM (SELECT ...) AS sub\n" +
-			"3. Trong SELECT: SELECT (SELECT COUNT(*) FROM ...) AS cnt\n\n" +
-			"Lưu ý: Subquery trong WHERE nên trả về ít dòng để tối ưu hiệu suất."
-	}
-
-	if strings.Contains(msg, "aggregate") || strings.Contains(msg, "tổng hợp") || strings.Contains(msg, "count") || strings.Contains(msg, "sum") {
-		return "Các hàm tổng hợp (Aggregate Functions):\n" +
-			"- COUNT(*): Đếm số dòng\n" +
-			"- SUM(column): Tính tổng\n" +
-			"- AVG(column): Tính trung bình\n" +
-			"- MAX(column) / MIN(column): Lớn nhất / Nhỏ nhất\n\n" +
-			"Nhớ dùng GROUP BY khi kết hợp cột thường và hàm tổng hợp."
-	}
-
-	// SQL-related hints
-	if sql != "" && !strings.Contains(sql, "select") {
-		return "Câu truy vấn SQL cần bắt đầu bằng SELECT. Cấu trúc cơ bản:\n" +
-			"SELECT cột1, cột2 FROM tên_bảng WHERE điều_kiện\n\n" +
-			"Bạn hãy thử viết lại câu truy vấn theo cấu trúc này."
-	}
-
-	// Default helpful response
-	return "Mình hiểu câu hỏi của bạn. Một số gợi ý chung:\n" +
-		"1. Đọc kỹ mô tả bài toán để hiểu yêu cầu\n" +
-		"2. Xác định bảng nào cần dùng và mối quan hệ giữa chúng\n" +
-		"3. Viết SELECT cơ bản trước, sau đó thêm điều kiện\n" +
-		"4. Dùng nút 'Run' để test trước khi Submit\n" +
-		"5. Nếu bị lỗi, đọc kỹ thông báo lỗi — nó thường chỉ rõ vấn đề\n\n" +
-		"Bạn có thể gửi câu SQL cụ thể để mình hướng dẫn chi tiết hơn!"
-}
-
-// generateSuggestions generates quick-reply suggestions based on context
-func (u *chatbotUseCase) generateSuggestions(req *dto.ChatRequest) []string {
-	suggestions := []string{}
-
-	if req.ErrorMessage != "" {
-		suggestions = append(suggestions, "Giải thích lỗi này")
-		suggestions = append(suggestions, "Sửa lỗi cú pháp")
-	}
-
-	if req.StudentSQL != "" {
-		suggestions = append(suggestions, "Review câu SQL của tôi")
-		suggestions = append(suggestions, "Tối ưu truy vấn")
-	}
-
-	if req.ProblemID != nil {
-		suggestions = append(suggestions, "Gợi ý cách tiếp cận")
-		suggestions = append(suggestions, "Giải thích yêu cầu bài")
-	}
-
-	// Always include general suggestions
-	suggestions = append(suggestions, "Hướng dẫn JOIN")
-	suggestions = append(suggestions, "Hướng dẫn GROUP BY")
-
-	return suggestions
-}
-
-// generateHints generates progressive hints (not giving away the answer)
-func (u *chatbotUseCase) generateHints(req *dto.ChatRequest) []string {
-	hints := []string{}
-
-	if req.ProblemDesc != "" {
-		desc := strings.ToLower(req.ProblemDesc)
-
-		if strings.Contains(desc, "join") || strings.Contains(desc, "kết hợp") {
-			hints = append(hints, "Bài này cần JOIN các bảng. Xác định khóa ngoại để nối.")
-		}
-		if strings.Contains(desc, "count") || strings.Contains(desc, "đếm") {
-			hints = append(hints, "Sử dụng COUNT() kết hợp GROUP BY.")
-		}
-		if strings.Contains(desc, "max") || strings.Contains(desc, "lớn nhất") {
-			hints = append(hints, "Dùng MAX() hoặc ORDER BY ... DESC LIMIT 1.")
-		}
-		if strings.Contains(desc, "average") || strings.Contains(desc, "trung bình") {
-			hints = append(hints, "Sử dụng AVG() để tính trung bình.")
-		}
-	}
-
-	return hints
+    if strings.Contains(errMsg, "syntax error") {
+        return "Câu SQL có lỗi cú pháp. Kiểm tra:\n1. Đủ dấu ngoặc () chưa?\n2. Thứ tự từ khóa SELECT → FROM → WHERE → GROUP BY → HAVING → ORDER BY?\n3. Dấu phẩy giữa các cột?"
+    }
+    if strings.Contains(errMsg, "does not exist") {
+        return "Tên bảng hoặc cột không tồn tại. Kiểm tra chính tả và schema của bài."
+    }
+    if strings.Contains(msg, "join") {
+        return "INNER JOIN chỉ lấy dòng khớp cả 2 bảng. LEFT JOIN lấy tất cả từ bảng trái.\nCú pháp: SELECT ... FROM a JOIN b ON a.id = b.a_id"
+    }
+    if strings.Contains(msg, "group by") {
+        return "GROUP BY: mọi cột trong SELECT không trong hàm tổng hợp PHẢI có trong GROUP BY.\nVí dụ: SELECT dept, COUNT(*) FROM employees GROUP BY dept"
+    }
+    return "Hãy chia sẻ câu SQL của bạn để mình hỗ trợ cụ thể hơn!"
 }

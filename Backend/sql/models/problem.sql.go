@@ -33,6 +33,17 @@ func (q *Queries) CountProblemsAdmin(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countProblemsByCreator = `-- name: CountProblemsByCreator :one
+SELECT COUNT(*) FROM problems WHERE created_by = $1 AND is_active = TRUE
+`
+
+func (q *Queries) CountProblemsByCreator(ctx context.Context, createdBy *int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countProblemsByCreator, createdBy)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countProblemsByDifficulty = `-- name: CountProblemsByDifficulty :many
 SELECT difficulty, COUNT(*) as count
 FROM problems
@@ -69,7 +80,7 @@ const countSearchProblems = `-- name: CountSearchProblems :one
 SELECT COUNT(*) FROM problems
 WHERE is_active = TRUE AND is_public = TRUE
   AND (title ILIKE '%' || $1::text || '%'
-       OR description ILIKE '%' || $1::text || '%')
+       OR title ILIKE '%' || $1::text || '%')
 `
 
 func (q *Queries) CountSearchProblems(ctx context.Context, searchQuery string) (int64, error) {
@@ -83,10 +94,10 @@ const createProblem = `-- name: CreateProblem :one
 INSERT INTO problems (
     title, slug, description, difficulty, topic_id, created_by,
     init_script, solution_query, supported_databases, order_matters,
-    hints, sample_output, is_public
+    hints, sample_output, is_public, source_pdf_url
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, source_pdf_url
 `
 
 type CreateProblemParams struct {
@@ -103,6 +114,7 @@ type CreateProblemParams struct {
 	Hints              []byte   `json:"hints"`
 	SampleOutput       []byte   `json:"sampleOutput"`
 	IsPublic           *bool    `json:"isPublic"`
+	SourcePdfUrl       *string  `json:"sourcePdfUrl"`
 }
 
 func (q *Queries) CreateProblem(ctx context.Context, arg CreateProblemParams) (Problem, error) {
@@ -120,6 +132,7 @@ func (q *Queries) CreateProblem(ctx context.Context, arg CreateProblemParams) (P
 		arg.Hints,
 		arg.SampleOutput,
 		arg.IsPublic,
+		arg.SourcePdfUrl,
 	)
 	var i Problem
 	err := row.Scan(
@@ -140,6 +153,7 @@ func (q *Queries) CreateProblem(ctx context.Context, arg CreateProblemParams) (P
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourcePdfUrl,
 	)
 	return i, err
 }
@@ -278,7 +292,7 @@ func (q *Queries) GetPassRatePerProblem(ctx context.Context, limit int32) ([]Get
 }
 
 const getProblemByID = `-- name: GetProblemByID :one
-SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at FROM problems WHERE id = $1
+SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, source_pdf_url FROM problems WHERE id = $1
 `
 
 func (q *Queries) GetProblemByID(ctx context.Context, id int64) (Problem, error) {
@@ -302,12 +316,13 @@ func (q *Queries) GetProblemByID(ctx context.Context, id int64) (Problem, error)
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourcePdfUrl,
 	)
 	return i, err
 }
 
 const getProblemBySlug = `-- name: GetProblemBySlug :one
-SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at FROM problems WHERE slug = $1 AND is_active = TRUE
+SELECT id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, source_pdf_url FROM problems WHERE slug = $1 AND is_active = TRUE
 `
 
 func (q *Queries) GetProblemBySlug(ctx context.Context, slug string) (Problem, error) {
@@ -331,13 +346,52 @@ func (q *Queries) GetProblemBySlug(ctx context.Context, slug string) (Problem, e
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourcePdfUrl,
+	)
+	return i, err
+}
+
+const getProblemSchemaForChatbot = `-- name: GetProblemSchemaForChatbot :one
+SELECT
+    id, title, description, difficulty,
+    init_script, supported_databases, hints,
+    sample_output, topic_id
+FROM problems
+WHERE id = $1 AND is_active = true
+`
+
+type GetProblemSchemaForChatbotRow struct {
+	ID                 int64    `json:"id"`
+	Title              string   `json:"title"`
+	Description        string   `json:"description"`
+	Difficulty         string   `json:"difficulty"`
+	InitScript         string   `json:"initScript"`
+	SupportedDatabases []string `json:"supportedDatabases"`
+	Hints              []byte   `json:"hints"`
+	SampleOutput       []byte   `json:"sampleOutput"`
+	TopicID            *int32   `json:"topicId"`
+}
+
+func (q *Queries) GetProblemSchemaForChatbot(ctx context.Context, id int64) (GetProblemSchemaForChatbotRow, error) {
+	row := q.db.QueryRow(ctx, getProblemSchemaForChatbot, id)
+	var i GetProblemSchemaForChatbotRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Description,
+		&i.Difficulty,
+		&i.InitScript,
+		&i.SupportedDatabases,
+		&i.Hints,
+		&i.SampleOutput,
+		&i.TopicID,
 	)
 	return i, err
 }
 
 const getProblemWithUserProgress = `-- name: GetProblemWithUserProgress :one
 SELECT 
-    p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at,
+    p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url,
     t.name as topic_name,
     t.slug as topic_slug,
     up.is_solved,
@@ -372,6 +426,7 @@ type GetProblemWithUserProgressRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 	IsSolved           *bool              `json:"isSolved"`
@@ -400,6 +455,7 @@ func (q *Queries) GetProblemWithUserProgress(ctx context.Context, arg GetProblem
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourcePdfUrl,
 		&i.TopicName,
 		&i.TopicSlug,
 		&i.IsSolved,
@@ -548,8 +604,36 @@ func (q *Queries) GetUserPerformanceTimeline(ctx context.Context, arg GetUserPer
 	return items, nil
 }
 
+const getUserProblemProgress = `-- name: GetUserProblemProgress :one
+SELECT id, user_id, problem_id, is_solved, attempts, best_time_ms, first_attempted_at, last_attempted_at, solved_at
+FROM user_progress
+WHERE user_id = $1 AND problem_id = $2
+`
+
+type GetUserProblemProgressParams struct {
+	UserID    int64 `json:"userId"`
+	ProblemID int64 `json:"problemId"`
+}
+
+func (q *Queries) GetUserProblemProgress(ctx context.Context, arg GetUserProblemProgressParams) (UserProgress, error) {
+	row := q.db.QueryRow(ctx, getUserProblemProgress, arg.UserID, arg.ProblemID)
+	var i UserProgress
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProblemID,
+		&i.IsSolved,
+		&i.Attempts,
+		&i.BestTimeMs,
+		&i.FirstAttemptedAt,
+		&i.LastAttemptedAt,
+		&i.SolvedAt,
+	)
+	return i, err
+}
+
 const listProblems = `-- name: ListProblems :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.is_public = TRUE AND p.is_active = TRUE
@@ -580,6 +664,7 @@ type ListProblemsRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -611,6 +696,7 @@ func (q *Queries) ListProblems(ctx context.Context, arg ListProblemsParams) ([]L
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -626,7 +712,7 @@ func (q *Queries) ListProblems(ctx context.Context, arg ListProblemsParams) ([]L
 
 const listProblemsAdmin = `-- name: ListProblemsAdmin :many
 
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.is_active = TRUE
@@ -657,6 +743,7 @@ type ListProblemsAdminRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -691,6 +778,7 @@ func (q *Queries) ListProblemsAdmin(ctx context.Context, arg ListProblemsAdminPa
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -704,8 +792,70 @@ func (q *Queries) ListProblemsAdmin(ctx context.Context, arg ListProblemsAdminPa
 	return items, nil
 }
 
+const listProblemsByCreator = `-- name: ListProblemsByCreator :many
+SELECT
+    p.id, p.title, p.slug, p.difficulty, p.is_public,
+    p.created_at, p.updated_at,
+    COALESCE(array_length(p.supported_databases, 1), 0) as db_count,
+    COUNT(DISTINCT tc.id) as test_case_count
+FROM problems p
+LEFT JOIN problem_test_cases tc ON tc.problem_id = p.id
+WHERE p.created_by = $1 AND p.is_active = TRUE
+GROUP BY p.id
+ORDER BY p.created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListProblemsByCreatorParams struct {
+	CreatedBy *int64 `json:"createdBy"`
+	Limit     int32  `json:"limit"`
+	Offset    int32  `json:"offset"`
+}
+
+type ListProblemsByCreatorRow struct {
+	ID            int64              `json:"id"`
+	Title         string             `json:"title"`
+	Slug          string             `json:"slug"`
+	Difficulty    string             `json:"difficulty"`
+	IsPublic      *bool              `json:"isPublic"`
+	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt     pgtype.Timestamptz `json:"updatedAt"`
+	DbCount       interface{}        `json:"dbCount"`
+	TestCaseCount int64              `json:"testCaseCount"`
+}
+
+func (q *Queries) ListProblemsByCreator(ctx context.Context, arg ListProblemsByCreatorParams) ([]ListProblemsByCreatorRow, error) {
+	rows, err := q.db.Query(ctx, listProblemsByCreator, arg.CreatedBy, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProblemsByCreatorRow{}
+	for rows.Next() {
+		var i ListProblemsByCreatorRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Slug,
+			&i.Difficulty,
+			&i.IsPublic,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DbCount,
+			&i.TestCaseCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProblemsByDifficulty = `-- name: ListProblemsByDifficulty :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.difficulty = $1 AND p.is_public = TRUE AND p.is_active = TRUE
@@ -737,6 +887,7 @@ type ListProblemsByDifficultyRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -768,6 +919,7 @@ func (q *Queries) ListProblemsByDifficulty(ctx context.Context, arg ListProblems
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -782,7 +934,7 @@ func (q *Queries) ListProblemsByDifficulty(ctx context.Context, arg ListProblems
 }
 
 const listProblemsByDifficultyAdmin = `-- name: ListProblemsByDifficultyAdmin :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.difficulty = $1 AND p.is_active = TRUE
@@ -814,6 +966,7 @@ type ListProblemsByDifficultyAdminRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -845,83 +998,7 @@ func (q *Queries) ListProblemsByDifficultyAdmin(ctx context.Context, arg ListPro
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.TopicName,
-			&i.TopicSlug,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listProblemsByLecturer = `-- name: ListProblemsByLecturer :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
-FROM problems p
-LEFT JOIN topics t ON t.id = p.topic_id
-WHERE p.created_by = $1 AND p.is_active = TRUE
-ORDER BY p.created_at DESC
-LIMIT $2 OFFSET $3
-`
-
-type ListProblemsByLecturerParams struct {
-	CreatedBy *int64 `json:"createdBy"`
-	Limit     int32  `json:"limit"`
-	Offset    int32  `json:"offset"`
-}
-
-type ListProblemsByLecturerRow struct {
-	ID                 int64              `json:"id"`
-	Title              string             `json:"title"`
-	Slug               string             `json:"slug"`
-	Description        string             `json:"description"`
-	Difficulty         string             `json:"difficulty"`
-	TopicID            *int32             `json:"topicId"`
-	CreatedBy          *int64             `json:"createdBy"`
-	InitScript         string             `json:"initScript"`
-	SolutionQuery      string             `json:"solutionQuery"`
-	SupportedDatabases []string           `json:"supportedDatabases"`
-	OrderMatters       *bool              `json:"orderMatters"`
-	Hints              []byte             `json:"hints"`
-	SampleOutput       []byte             `json:"sampleOutput"`
-	IsPublic           *bool              `json:"isPublic"`
-	IsActive           *bool              `json:"isActive"`
-	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
-	TopicName          *string            `json:"topicName"`
-	TopicSlug          *string            `json:"topicSlug"`
-}
-
-func (q *Queries) ListProblemsByLecturer(ctx context.Context, arg ListProblemsByLecturerParams) ([]ListProblemsByLecturerRow, error) {
-	rows, err := q.db.Query(ctx, listProblemsByLecturer, arg.CreatedBy, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListProblemsByLecturerRow{}
-	for rows.Next() {
-		var i ListProblemsByLecturerRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Title,
-			&i.Slug,
-			&i.Description,
-			&i.Difficulty,
-			&i.TopicID,
-			&i.CreatedBy,
-			&i.InitScript,
-			&i.SolutionQuery,
-			&i.SupportedDatabases,
-			&i.OrderMatters,
-			&i.Hints,
-			&i.SampleOutput,
-			&i.IsPublic,
-			&i.IsActive,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -936,7 +1013,7 @@ func (q *Queries) ListProblemsByLecturer(ctx context.Context, arg ListProblemsBy
 }
 
 const listProblemsByTopic = `-- name: ListProblemsByTopic :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.topic_id = $1 AND p.is_public = TRUE AND p.is_active = TRUE
@@ -968,6 +1045,7 @@ type ListProblemsByTopicRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -999,6 +1077,7 @@ func (q *Queries) ListProblemsByTopic(ctx context.Context, arg ListProblemsByTop
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -1013,7 +1092,7 @@ func (q *Queries) ListProblemsByTopic(ctx context.Context, arg ListProblemsByTop
 }
 
 const listProblemsByTopicAdmin = `-- name: ListProblemsByTopicAdmin :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.topic_id = $1 AND p.is_active = TRUE
@@ -1045,6 +1124,7 @@ type ListProblemsByTopicAdminRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -1076,6 +1156,7 @@ func (q *Queries) ListProblemsByTopicAdmin(ctx context.Context, arg ListProblems
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -1091,7 +1172,7 @@ func (q *Queries) ListProblemsByTopicAdmin(ctx context.Context, arg ListProblems
 
 const searchProblems = `-- name: SearchProblems :many
 
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.is_active = TRUE AND p.is_public = TRUE
@@ -1125,6 +1206,7 @@ type SearchProblemsRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -1159,6 +1241,7 @@ func (q *Queries) SearchProblems(ctx context.Context, arg SearchProblemsParams) 
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -1173,7 +1256,7 @@ func (q *Queries) SearchProblems(ctx context.Context, arg SearchProblemsParams) 
 }
 
 const searchProblemsAdmin = `-- name: SearchProblemsAdmin :many
-SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, t.name as topic_name, t.slug as topic_slug
+SELECT p.id, p.title, p.slug, p.description, p.difficulty, p.topic_id, p.created_by, p.init_script, p.solution_query, p.supported_databases, p.order_matters, p.hints, p.sample_output, p.is_public, p.is_active, p.created_at, p.updated_at, p.source_pdf_url, t.name as topic_name, t.slug as topic_slug
 FROM problems p
 LEFT JOIN topics t ON t.id = p.topic_id
 WHERE p.is_active = TRUE
@@ -1207,6 +1290,7 @@ type SearchProblemsAdminRow struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl"`
 	TopicName          *string            `json:"topicName"`
 	TopicSlug          *string            `json:"topicSlug"`
 }
@@ -1238,6 +1322,7 @@ func (q *Queries) SearchProblemsAdmin(ctx context.Context, arg SearchProblemsAdm
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourcePdfUrl,
 			&i.TopicName,
 			&i.TopicSlug,
 		); err != nil {
@@ -1265,7 +1350,7 @@ UPDATE problems SET
     is_public = COALESCE($11, is_public),
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at
+RETURNING id, title, slug, description, difficulty, topic_id, created_by, init_script, solution_query, supported_databases, order_matters, hints, sample_output, is_public, is_active, created_at, updated_at, source_pdf_url
 `
 
 type UpdateProblemParams struct {
@@ -1315,6 +1400,7 @@ func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (P
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourcePdfUrl,
 	)
 	return i, err
 }

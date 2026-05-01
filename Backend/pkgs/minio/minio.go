@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"mime/multipart"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 
 type IUploadService interface {
 	UploadFile(ctx context.Context, file *multipart.FileHeader, folder string) (string, error)
+	UploadFileFromPath(ctx context.Context, localPath, folder, contentType string) (string, error)
+	GetPresignedURL(ctx context.Context, fileURL string, expiry time.Duration) (string, error)
 	DeleteFile(ctx context.Context, fileURL string) error
 }
 
@@ -76,6 +80,43 @@ func (m *MinioClient) UploadFile(ctx context.Context, file *multipart.FileHeader
 	}
 
 	return fmt.Sprintf("%s/%s/%s", m.BaseURL, m.Bucket, objectName), nil
+}
+
+// UploadFileFromPath upload file từ đường dẫn local lên MinIO
+func (m *MinioClient) UploadFileFromPath(ctx context.Context, localPath, folder, contentType string) (string, error) {
+	f, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot open file: %w", err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	if folder == "" {
+		folder = "uploads"
+	}
+	objectName := fmt.Sprintf("%s/%d-%s", folder, time.Now().UnixNano(), filepath.Base(localPath))
+
+	_, err = m.Client.PutObject(ctx, m.Bucket, objectName, f, stat.Size(), minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s/%s/%s", m.BaseURL, m.Bucket, objectName), nil
+}
+
+// GetPresignedURL tạo URL tạm thời để download file trực tiếp từ MinIO
+func (m *MinioClient) GetPresignedURL(ctx context.Context, fileURL string, expiry time.Duration) (string, error) {
+	objectName := extractFilePath(fileURL, m.BaseURL, m.Bucket)
+	presignedURL, err := m.Client.PresignedGetObject(ctx, m.Bucket, objectName, expiry, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
+	}
+	return presignedURL.String(), nil
 }
 
 func (m *MinioClient) DeleteFile(ctx context.Context, fileURL string) error {

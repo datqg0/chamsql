@@ -12,10 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const countStuckEvents = `-- name: CountStuckEvents :one
+SELECT COUNT(*) FROM outbox_events WHERE status = 'pending' AND retry_count >= 3
+`
+
+func (q *Queries) CountStuckEvents(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countStuckEvents)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const fetchPendingEvents = `-- name: FetchPendingEvents :many
 SELECT id, topic, payload
 FROM outbox_events
-WHERE status = 'pending'
+WHERE status = 'pending' AND retry_count < 3
 ORDER BY created_at ASC
 LIMIT $1
 `

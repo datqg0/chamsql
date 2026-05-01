@@ -15,6 +15,7 @@ func Routes(rg *gin.RouterGroup, handler *PDFHandler, authMiddleware gin.Handler
 		pdfGroup.POST("/upload", handler.Upload)
 		pdfGroup.GET("/:id/status", handler.GetStatus)
 		pdfGroup.GET("/:id/problems", handler.GetProblems)
+		pdfGroup.GET("/:id/download", handler.DownloadPDF)
 		pdfGroup.PUT("/problems/:id/solution", handler.UpdateSolution)
 		pdfGroup.POST("/problems/:id/confirm", handler.ConfirmProblem)
 	}

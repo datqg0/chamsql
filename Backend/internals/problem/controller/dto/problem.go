@@ -58,6 +58,7 @@ type ProblemResponse struct {
 	SampleOutput       json.RawMessage    `json:"sampleOutput,omitempty"`
 	IsPublic           bool               `json:"isPublic"`
 	CreatedBy          *int64             `json:"createdBy,omitempty"`
+	SourcePdfUrl       *string            `json:"sourcePdfUrl,omitempty"`
 	CreatedAt          string             `json:"createdAt,omitempty"`
 	TestCases          []TestCaseResponse `json:"testCases,omitempty"`
 	// User progress (if authenticated)
@@ -77,10 +78,10 @@ type TestCaseResponse struct {
 }
 
 type ProblemListResponse struct {
-	Problems []ProblemResponse `json:"problems"`
-	Total    int64             `json:"total"`
-	Page     int               `json:"page"`
-	PageSize int               `json:"pageSize"`
+	Problems interface{} `json:"problems"`
+	Total    int64       `json:"total"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"pageSize"`
 }
 
 type ProblemListQuery struct {
@@ -89,4 +90,12 @@ type ProblemListQuery struct {
 	Search     *string `form:"search"`
 	Page       int     `form:"page,default=1"`
 	PageSize   int     `form:"pageSize,default=20"`
+}
+
+type ProblemSummary struct {
+	ID         int64  `json:"id"`
+	Title      string `json:"title"`
+	Slug       string `json:"slug"`
+	Difficulty string `json:"difficulty"`
+	IsPublic   bool   `json:"isPublic"`
 }

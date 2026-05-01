@@ -62,14 +62,6 @@ func (c *ExamEventConsumer) handleMessage(ctx context.Context, msg kafka.Message
 
 	// Handle the event based on its type
 	switch envelope.EventType {
-	case exam_domain.EventTypeExamCreated:
-		c.handleExamCreated(ctx, &envelope)
-	case exam_domain.EventTypeExamStarted:
-		c.handleExamStarted(ctx, &envelope)
-	case exam_domain.EventTypeExamSubmitted:
-		c.handleExamSubmitted(ctx, &envelope)
-	case exam_domain.EventTypeExamFinished:
-		c.handleExamFinished(ctx, &envelope)
 	case exam_domain.EventTypeExamTimeExpired:
 		c.handleExamTimeExpired(ctx, &envelope)
 	case exam_domain.EventTypeExamTimeExtended:
@@ -84,58 +76,6 @@ func (c *ExamEventConsumer) handleMessage(ctx context.Context, msg kafka.Message
 	}
 
 	return nil
-}
-
-func (c *ExamEventConsumer) handleExamCreated(ctx context.Context, envelope *messaging.EventEnvelope) {
-	var payload exam_domain.ExamEventPayload
-	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
-		logger.Error("Failed to unmarshal ExamCreated payload: %v", err)
-		return
-	}
-
-	logger.Info("Exam created event: examID=%d, title=%s, createdBy=%d", payload.ExamID, payload.Title, payload.CreatedBy)
-	// TODO: Implement exam creation side effects
-	// Examples:
-	// - Update search indexes
-	// - Send notifications
-	// - Trigger related workflows
-}
-
-func (c *ExamEventConsumer) handleExamStarted(ctx context.Context, envelope *messaging.EventEnvelope) {
-	var payload exam_domain.ExamEventPayload
-	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
-		logger.Error("Failed to unmarshal ExamStarted payload: %v", err)
-		return
-	}
-
-	logger.Info("Exam started event: examID=%d, userID=%d", payload.ExamID, payload.UserID)
-	// TODO: Implement exam start side effects
-}
-
-func (c *ExamEventConsumer) handleExamSubmitted(ctx context.Context, envelope *messaging.EventEnvelope) {
-	var payload exam_domain.ExamEventPayload
-	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
-		logger.Error("Failed to unmarshal ExamSubmitted payload: %v", err)
-		return
-	}
-
-	logger.Info("Exam submitted event: examID=%d, userID=%d", payload.ExamID, payload.UserID)
-	// TODO: Implement exam submission side effects
-}
-
-func (c *ExamEventConsumer) handleExamFinished(ctx context.Context, envelope *messaging.EventEnvelope) {
-	var payload exam_domain.ExamEventPayload
-	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
-		logger.Error("Failed to unmarshal ExamFinished payload: %v", err)
-		return
-	}
-
-	logger.Info("Exam finished event: examID=%d, userID=%d, score=%.2f", payload.ExamID, payload.UserID, payload.Score)
-	// TODO: Implement exam finish side effects
-	// Examples:
-	// - Send result notifications
-	// - Update user statistics
-	// - Trigger grading workflows
 }
 
 func (c *ExamEventConsumer) handleExamTimeExpired(ctx context.Context, envelope *messaging.EventEnvelope) {

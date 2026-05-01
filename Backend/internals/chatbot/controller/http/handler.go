@@ -1,43 +1,52 @@
 package http
 
 import (
-	"backend/internals/chatbot/controller/dto"
-	"backend/internals/chatbot/usecase"
-	"backend/pkgs/response"
+    "backend/internals/chatbot/controller/dto"
+    "backend/internals/chatbot/usecase"
+    "backend/pkgs/middlewares"
+    "backend/pkgs/response"
 
-	"github.com/gin-gonic/gin"
+    "github.com/gin-gonic/gin"
+    "strings"
 )
 
-// ChatbotHandler handles chatbot HTTP requests
 type ChatbotHandler struct {
-	usecase usecase.IChatbotUseCase
+    usecase usecase.IChatbotUseCase
 }
 
-// NewChatbotHandler creates a new chatbot handler
 func NewChatbotHandler(uc usecase.IChatbotUseCase) *ChatbotHandler {
-	return &ChatbotHandler{usecase: uc}
+    return &ChatbotHandler{usecase: uc}
 }
 
 // Ask godoc
-// @Summary     Ask the SQL guidance chatbot
-// @Description Student sends a question about SQL, optionally with problem context and their SQL code
+// @Summary     Ask chatbot
 // @Tags        Chatbot
 // @Accept      json
 // @Produce     json
-// @Param       request body dto.ChatRequest true "Chat message with optional context"
+// @Param       request body dto.ChatRequest true "Chat data"
 // @Success     200 {object} dto.ChatResponse
 // @Router      /chatbot/ask [post]
 func (h *ChatbotHandler) Ask(c *gin.Context) {
-	var req dto.ChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
+    var req dto.ChatRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        response.BadRequest(c, err.Error())
+        return
+    }
 
-	result, err := h.usecase.Ask(c.Request.Context(), &req)
-	if err != nil {
-		response.InternalServerError(c, err.Error())
-		return
-	}
-	response.Success(c, result)
+    // Gắn UserID từ JWT nếu có
+    if userID, ok := middlewares.GetUserID(c); ok {
+        req.UserID = &userID
+    }
+
+    result, err := h.usecase.Ask(c.Request.Context(), &req)
+    if err != nil {
+        // Rate limit error → 429
+        if strings.Contains(err.Error(), "hết lượt") {
+            c.JSON(429, gin.H{"error": err.Error()})
+            return
+        }
+        response.InternalServerError(c, err.Error())
+        return
+    }
+    response.Success(c, result)
 }

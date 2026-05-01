@@ -9,6 +9,7 @@ import (
 	"backend/internals/problem/repository"
 	"backend/pkgs/redis"
 	"backend/sql/models"
+	"fmt"
 )
 
 var (
@@ -23,7 +24,7 @@ type IProblemUseCase interface {
 	List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
 	Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
 	Delete(ctx context.Context, userID int64, id int64) error
-	ListMyProblems(ctx context.Context, userID int64, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
+	ListMine(ctx context.Context, creatorID int64, page, pageSize int) (*dto.ProblemListResponse, error)
 }
 
 type problemUseCase struct {
@@ -422,38 +423,42 @@ func (u *problemUseCase) Delete(ctx context.Context, userID int64, id int64) err
 	return u.repo.Delete(ctx, id)
 }
 
-func (u *problemUseCase) ListMyProblems(ctx context.Context, userID int64, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error) {
-	offset := int32((query.Page - 1) * query.PageSize)
-	limit := int32(query.PageSize)
+func (u *problemUseCase) ListMine(ctx context.Context, creatorID int64, page, pageSize int) (*dto.ProblemListResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	offset := int32((page - 1) * pageSize)
+	limit := int32(pageSize)
 
-	rows, err := u.repo.ListByLecturer(ctx, userID, limit, offset)
+	rows, err := u.repo.ListByCreator(ctx, creatorID, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list creator problems: %w", err)
 	}
 
-	problems := make([]dto.ProblemResponse, len(rows))
-	for i, row := range rows {
-		problems[i] = dto.ProblemResponse{
-			ID:                 row.ID,
-			Title:              row.Title,
-			Slug:               row.Slug,
-			Description:        row.Description,
-			Difficulty:         row.Difficulty,
-			SupportedDatabases: row.SupportedDatabases,
-			TopicName:          ptrToStr(row.TopicName),
-			TopicSlug:          ptrToStr(row.TopicSlug),
-			IsPublic:           ptrToBool(row.IsPublic),
-		}
-	}
+	total, _ := u.repo.CountByCreator(ctx, creatorID)
 
-	// We might need a CountByLecturer, but for now use simple count or total
-	total := int64(len(problems)) // This is incorrect for pagination, but enough for MVP if lecturer has few problems
+	var problems []dto.ProblemSummary
+	for _, row := range rows {
+		problems = append(problems, dto.ProblemSummary{
+			ID:         row.ID,
+			Title:      row.Title,
+			Slug:       row.Slug,
+			Difficulty: row.Difficulty,
+			IsPublic:   ptrToBool(row.IsPublic),
+		})
+	}
+	if problems == nil {
+		problems = []dto.ProblemSummary{}
+	}
 
 	return &dto.ProblemListResponse{
 		Problems: problems,
 		Total:    total,
-		Page:     query.Page,
-		PageSize: query.PageSize,
+		Page:     page,
+		PageSize: pageSize,
 	}, nil
 }
 
@@ -487,6 +492,7 @@ func toProblemResponse(p *models.Problem, testCases []models.ProblemTestCase) *d
 		SampleOutput:       p.SampleOutput,
 		IsPublic:           ptrToBool(p.IsPublic),
 		CreatedBy:          p.CreatedBy,
+		SourcePdfUrl:       p.SourcePdfUrl,
 		TestCases:          tcResponses,
 	}
 }
@@ -533,6 +539,7 @@ func toProblemWithProgressResponse(p *models.GetProblemWithUserProgressRow, test
 		SampleOutput:       p.SampleOutput,
 		IsPublic:           ptrToBool(p.IsPublic),
 		CreatedBy:          p.CreatedBy,
+		SourcePdfUrl:       p.SourcePdfUrl,
 		IsSolved:           p.IsSolved,
 		Attempts:           attempts,
 		BestTimeMs:         bestTime,

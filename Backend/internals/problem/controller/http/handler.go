@@ -5,18 +5,24 @@ import (
 
 	"backend/internals/problem/controller/dto"
 	"backend/internals/problem/usecase"
+	miniopkg "backend/pkgs/minio"
 	"backend/pkgs/middlewares"
 	"backend/pkgs/response"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type ProblemHandler struct {
 	usecase usecase.IProblemUseCase
+	storage miniopkg.IUploadService
 }
 
-func NewProblemHandler(uc usecase.IProblemUseCase) *ProblemHandler {
-	return &ProblemHandler{usecase: uc}
+func NewProblemHandler(uc usecase.IProblemUseCase, storage miniopkg.IUploadService) *ProblemHandler {
+	return &ProblemHandler{
+		usecase: uc,
+		storage: storage,
+	}
 }
 
 // List godoc
@@ -205,30 +211,58 @@ func (h *ProblemHandler) Delete(c *gin.Context) {
 // @Param       pageSize query int false "Page size" default(20)
 // @Success     200 {object} dto.ProblemListResponse
 // @Router      /lecturer/problems/mine [get]
-func (h *ProblemHandler) ListMyProblems(c *gin.Context) {
+func (h *ProblemHandler) ListMine(c *gin.Context) {
 	userID, ok := middlewares.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, "Unauthorized")
+		response.Unauthorized(c, "unauthorized")
 		return
 	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 
-	var query dto.ProblemListQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-
-	if query.Page <= 0 {
-		query.Page = 1
-	}
-	if query.PageSize <= 0 || query.PageSize > 100 {
-		query.PageSize = 20
-	}
-
-	result, err := h.usecase.ListMyProblems(c.Request.Context(), userID, &query)
+	result, err := h.usecase.ListMine(c.Request.Context(), userID, page, pageSize)
 	if err != nil {
 		response.InternalServerError(c, err.Error())
 		return
 	}
 	response.Success(c, result)
+}
+
+// DownloadProblemPDF godoc
+// @Summary     Download PDF source of a problem
+// @Tags        Problems
+// @Produce     json
+// @Param       slug path string true "Problem slug"
+// @Success     200 {object} map[string]interface{}
+// @Router      /problems/{slug}/pdf [get]
+func (h *ProblemHandler) DownloadProblemPDF(c *gin.Context) {
+	slug := c.Param("slug")
+	// Lấy userID nếu có để track progress/permission nếu cần trong tương lai
+	var userID *int64
+	if id, ok := middlewares.GetUserID(c); ok {
+		userID = &id
+	}
+
+	problem, err := h.usecase.GetBySlug(c.Request.Context(), slug, userID)
+	if err != nil {
+		response.NotFound(c, "Problem not found")
+		return
+	}
+
+	if problem.SourcePdfUrl == nil || *problem.SourcePdfUrl == "" {
+		response.NotFound(c, "No PDF available for this problem")
+		return
+	}
+
+	// Gen presigned URL (1h cho sinh viên)
+	presignedURL, err := h.storage.GetPresignedURL(c.Request.Context(), *problem.SourcePdfUrl, 1*time.Hour)
+	if err != nil {
+		response.InternalServerError(c, "Failed to generate download URL: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"download_url": presignedURL,
+		"expires_in":   "1h",
+	})
 }

@@ -201,6 +201,8 @@ type Problem struct {
 	IsActive           *bool              `json:"isActive"`
 	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	// MinIO URL của file PDF gốc mà bài toán được extract từ đó
+	SourcePdfUrl *string `json:"sourcePdfUrl"`
 }
 
 type ProblemReviewQueue struct {

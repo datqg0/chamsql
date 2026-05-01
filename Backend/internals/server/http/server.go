@@ -13,6 +13,7 @@ import (
 	studentHttp "backend/internals/student/controller/http"
 	submissionHttp "backend/internals/submission/controller/http"
 	topicHttp "backend/internals/topic/controller/http"
+	aiHttp "backend/internals/ai/controller/http"
 	"backend/pkgs/jwt"
 	"backend/pkgs/middlewares"
 	"backend/pkgs/redis"
@@ -30,19 +31,35 @@ type Server struct {
 	cache       redis.IRedis
 	jwtProv     jwt.JWTProvider
 	queryRunner runner.Runner
-	pdfHandler  *pdfHttp.PDFHandler
+	pdfHandler     *pdfHttp.PDFHandler
+	chatHandler    *chatbotHttp.ChatbotHandler
+	problemHandler *problemHttp.ProblemHandler
+	aiHandler      *aiHttp.AIHandler
 }
 
 // NewServer is injectable by DI container
-func NewServer(cfg *configs.Config, database *db.Database, cache redis.IRedis, jwtProv jwt.JWTProvider, queryRunner runner.Runner, pdfHandler *pdfHttp.PDFHandler) *Server {
+func NewServer(
+	cfg *configs.Config,
+	database *db.Database,
+	cache redis.IRedis,
+	jwtProv jwt.JWTProvider,
+	queryRunner runner.Runner,
+	pdfHandler *pdfHttp.PDFHandler,
+	chatHandler *chatbotHttp.ChatbotHandler,
+	problemHandler *problemHttp.ProblemHandler,
+	aiHandler *aiHttp.AIHandler,
+) *Server {
 	return &Server{
-		engine:      gin.Default(),
-		cfg:         cfg,
-		database:    database,
-		cache:       cache,
-		jwtProv:     jwtProv,
-		queryRunner: queryRunner,
-		pdfHandler:  pdfHandler,
+		engine:         gin.Default(),
+		cfg:            cfg,
+		database:       database,
+		cache:          cache,
+		jwtProv:        jwtProv,
+		queryRunner:    queryRunner,
+		pdfHandler:     pdfHandler,
+		chatHandler:    chatHandler,
+		problemHandler: problemHandler,
+		aiHandler:      aiHandler,
 	}
 }
 
@@ -89,7 +106,7 @@ func (s *Server) MapRoutes() {
 	topicHttp.Routes(v1, s.database, authMiddleware)
 
 	// Problem routes (CRUD with role protection)
-	problemHttp.Routes(v1, s.database, s.cache, authMiddleware)
+	problemHttp.Routes(v1, s.problemHandler, authMiddleware)
 
 	// Submission routes (run, submit, list)
 	submissionHttp.Routes(v1, s.database, s.queryRunner, s.cfg, authMiddleware)
@@ -104,7 +121,7 @@ func (s *Server) MapRoutes() {
 	studentHttp.Routes(v1, s.database, s.cache, s.queryRunner, authMiddleware)
 
 	// Chatbot routes (student SQL guidance)
-	chatbotHttp.Routes(v1, s.cfg, authMiddleware)
+	chatbotHttp.Routes(v1, s.chatHandler, authMiddleware)
 
 	// Admin routes (user import, stats, sandbox management)
 	adminHttp.Routes(v1, s.database, s.cache, authMiddleware, s.cfg, s.queryRunner)
@@ -112,4 +129,7 @@ func (s *Server) MapRoutes() {
 	// PDF Upload routes (Phase 4)
 	lecturerGroup := v1.Group("/lecturer")
 	pdfHttp.Routes(lecturerGroup, s.pdfHandler, authMiddleware)
+
+	// AI routes (Phase 4 Upgrade)
+	aiHttp.RegisterRoutes(v1, s.aiHandler, s.jwtProv, s.cache)
 }

@@ -2,9 +2,9 @@
 INSERT INTO problems (
     title, slug, description, difficulty, topic_id, created_by,
     init_script, solution_query, supported_databases, order_matters,
-    hints, sample_output, is_public
+    hints, sample_output, is_public, source_pdf_url
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *;
 
 -- name: GetProblemByID :one
@@ -78,6 +78,14 @@ LEFT JOIN topics t ON t.id = p.topic_id
 LEFT JOIN user_progress up ON up.problem_id = p.id AND up.user_id = $2
 WHERE p.slug = $1 AND p.is_active = TRUE;
 
+-- name: GetProblemSchemaForChatbot :one
+SELECT
+    id, title, description, difficulty,
+    init_script, supported_databases, hints,
+    sample_output, topic_id
+FROM problems
+WHERE id = $1 AND is_active = true;
+
 -- =============================================
 -- ADMIN QUERIES (no is_public filter)
 -- =============================================
@@ -109,13 +117,21 @@ LIMIT $2 OFFSET $3;
 -- name: CountProblemsAdmin :one
 SELECT COUNT(*) FROM problems WHERE is_active = TRUE;
 
--- name: ListProblemsByLecturer :many
-SELECT p.*, t.name as topic_name, t.slug as topic_slug
+-- name: ListProblemsByCreator :many
+SELECT
+    p.id, p.title, p.slug, p.difficulty, p.is_public,
+    p.created_at, p.updated_at,
+    COALESCE(array_length(p.supported_databases, 1), 0) as db_count,
+    COUNT(DISTINCT tc.id) as test_case_count
 FROM problems p
-LEFT JOIN topics t ON t.id = p.topic_id
+LEFT JOIN problem_test_cases tc ON tc.problem_id = p.id
 WHERE p.created_by = $1 AND p.is_active = TRUE
+GROUP BY p.id
 ORDER BY p.created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: CountProblemsByCreator :one
+SELECT COUNT(*) FROM problems WHERE created_by = $1 AND is_active = TRUE;
 
 -- =============================================
 -- SEARCH QUERIES
@@ -135,7 +151,7 @@ LIMIT $1 OFFSET $2;
 SELECT COUNT(*) FROM problems
 WHERE is_active = TRUE AND is_public = TRUE
   AND (title ILIKE '%' || @search_query::text || '%'
-       OR description ILIKE '%' || @search_query::text || '%');
+       OR title ILIKE '%' || @search_query::text || '%');
 
 -- name: SearchProblemsAdmin :many
 SELECT p.*, t.name as topic_name, t.slug as topic_slug
@@ -220,3 +236,8 @@ SELECT
     COUNT(DISTINCT problem_id) as total_problems_attempted
 FROM submissions
 WHERE submitted_at >= NOW() - INTERVAL '30 days';
+
+-- name: GetUserProblemProgress :one
+SELECT *
+FROM user_progress
+WHERE user_id = $1 AND problem_id = $2;

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -18,6 +21,7 @@ import (
 	pdfDomain "backend/internals/pdf/domain"
 	"backend/internals/pdf/repository"
 	problemRepo "backend/internals/problem/repository"
+	miniopkg "backend/pkgs/minio"
 	"backend/pkgs/pdf"
 	"backend/sql/models"
 )
@@ -32,6 +36,7 @@ type IUploadManager interface {
 	// ConfirmProblem lưu problem đã review vào bảng problems chính thức
 	ConfirmProblem(ctx context.Context, queueID int64, lecturerID int64, solutionQuery string, dbType string) error
 	UpdateProblemSolution(ctx context.Context, queueID int64, solutionQuery string) error
+	MarkUploadFailed(ctx context.Context, uploadID int64, reason string) error
 }
 
 // uploadManager implements IUploadManager
@@ -43,6 +48,7 @@ type uploadManager struct {
 	testCaseValidator aiUsecase.IAITestCaseValidator
 	aiOrchestrator    aiUsecase.IAIOrchestrator
 	problemRepo       problemRepo.IProblemRepository // inject để lưu vào problems table
+	storage           miniopkg.IUploadService        // inject để quản lý MinIO
 }
 
 // NewUploadManager creates a new upload manager
@@ -54,6 +60,7 @@ func NewUploadManager(
 	testCaseValidator aiUsecase.IAITestCaseValidator,
 	aiOrchestrator aiUsecase.IAIOrchestrator,
 	probRepo problemRepo.IProblemRepository,
+	storage miniopkg.IUploadService,
 ) IUploadManager {
 	return &uploadManager{
 		pdfRepo:           pdfRepo,
@@ -63,6 +70,7 @@ func NewUploadManager(
 		testCaseValidator: testCaseValidator,
 		aiOrchestrator:    aiOrchestrator,
 		problemRepo:       probRepo,
+		storage:           storage,
 	}
 }
 
@@ -91,15 +99,19 @@ func (m *uploadManager) ProcessExtraction(ctx context.Context, pdfUploadID int64
 	}
 
 	// Step 3a: Extract text from PDF file
-	// Dùng ledongthuc/pdf — hỗ trợ tiếng Việt UTF-8
-	rawText, err := m.pdfParser.ExtractTextFromFile(upload.FilePath)
+	// upload.FilePath bây giờ là MinIO URL — download về temp để extract
+	localPath, err := m.downloadFromMinIO(ctx, upload.FilePath, pdfUploadID)
+	if err != nil {
+		_, _ = m.pdfRepo.UpdatePDFUploadError(ctx, pdfUploadID, "Failed to download PDF from storage: "+err.Error())
+		return err
+	}
+	defer os.Remove(localPath) // xóa temp sau khi extract xong
+
+	rawText, err := m.pdfParser.ExtractTextFromFile(localPath)
 	if err != nil {
 		_, _ = m.pdfRepo.UpdatePDFUploadError(ctx, pdfUploadID, fmt.Sprintf("PDF text extraction failed: %v", err))
 		return fmt.Errorf("failed to extract PDF text: %w", err)
 	}
-
-	// Xóa file tạm sau khi đã extract xong
-	defer func() { _ = os.Remove(upload.FilePath) }()
 
 	// Step 3b: Parse problems từ text đã extract
 	problems, err := m.pdfParser.ParseProblems(rawText)
@@ -233,6 +245,34 @@ func (m *uploadManager) GenerateAIContent(ctx context.Context, pdfUploadID int64
 	return nil
 }
 
+// downloadFromMinIO download file về temp dir để xử lý
+func (m *uploadManager) downloadFromMinIO(ctx context.Context, minioURL string, uploadID int64) (string, error) {
+	presignedURL, err := m.storage.GetPresignedURL(ctx, minioURL, 10*time.Minute)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(presignedURL)
+	if err != nil {
+		return "", fmt.Errorf("download failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("bad status from minio download: %s", resp.Status)
+	}
+
+	tmpPath := filepath.Join(os.TempDir(), "chamsql", fmt.Sprintf("extract_%d_%d.pdf", uploadID, time.Now().UnixNano()))
+	_ = os.MkdirAll(filepath.Dir(tmpPath), 0o755)
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	return tmpPath, err
+}
+
 // GetUploadStatus retrieves the status of a PDF upload
 func (m *uploadManager) GetUploadStatus(ctx context.Context, uploadID int64) (*pdfDomain.PDFUpload, error) {
 	upload, err := m.pdfRepo.GetPDFUploadByID(ctx, uploadID)
@@ -288,6 +328,13 @@ func (m *uploadManager) ConfirmProblem(ctx context.Context, queueID int64, lectu
 	orderMatters := false
 
 	// 5. Lưu vào bảng problems
+	// Lấy MinIO URL từ pdf_uploads để lưu vào problem
+	pdfUpload, _ := m.pdfRepo.GetPDFUploadByID(ctx, queueItem.PDFUploadID)
+	sourcePDFURL := ""
+	if pdfUpload != nil {
+		sourcePDFURL = pdfUpload.FilePath // đây là MinIO URL vĩnh viễn
+	}
+
 	createdProblem, err := m.problemRepo.Create(ctx, models.CreateProblemParams{
 		Title:              draft.Title,
 		Slug:               slug,
@@ -299,6 +346,7 @@ func (m *uploadManager) ConfirmProblem(ctx context.Context, queueID int64, lectu
 		IsPublic:           &isPublic,
 		OrderMatters:       &orderMatters,
 		CreatedBy:          &lecturerID,
+		SourcePdfUrl:       &sourcePDFURL,
 	})
 	if err != nil {
 		// Nếu slug trùng, thêm suffix timestamp và retry
@@ -314,6 +362,7 @@ func (m *uploadManager) ConfirmProblem(ctx context.Context, queueID int64, lectu
 			IsPublic:           &isPublic,
 			OrderMatters:       &orderMatters,
 			CreatedBy:          &lecturerID,
+			SourcePdfUrl:       &sourcePDFURL,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create problem: %w", err)
@@ -406,4 +455,13 @@ func (m *uploadManager) UpdateProblemSolution(ctx context.Context, queueID int64
 	}
 
 	return nil
+}
+
+func (m *uploadManager) MarkUploadFailed(ctx context.Context, uploadID int64, reason string) error {
+	_, err := m.pdfRepo.UpdatePDFUploadStatus(ctx, uploadID, "failed")
+	if err != nil {
+		return err
+	}
+	_, err = m.pdfRepo.UpdatePDFUploadError(ctx, uploadID, reason)
+	return err
 }
