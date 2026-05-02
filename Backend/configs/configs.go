@@ -44,12 +44,13 @@ type Config struct {
 	RabbitMQURI string `mapstructure:"RABBITMQ_URI"`
 
 	// MinIO
-	MinioEndpoint  string `mapstructure:"MINIO_ENDPOINT"`
-	MinioAccessKey string `mapstructure:"MINIO_ACCESS_KEY"`
-	MinioSecretKey string `mapstructure:"MINIO_SECRET_KEY"`
-	MinioBucket    string `mapstructure:"MINIO_BUCKET"`
-	MinioBaseURL   string `mapstructure:"MINIO_BASE_URL"`
-	MinioUseSSL    bool   `mapstructure:"MINIO_USE_SSL"`
+	MinioEndpoint      string `mapstructure:"MINIO_ENDPOINT"`
+	MinioAccessKey     string `mapstructure:"MINIO_ACCESS_KEY"`
+	MinioSecretKey     string `mapstructure:"MINIO_SECRET_KEY"`
+	MinioBucket        string `mapstructure:"MINIO_BUCKET"`
+	MinioBaseURL       string `mapstructure:"MINIO_BASE_URL"`
+	MinioPublicBaseURL string `mapstructure:"MINIO_PUBLIC_BASE_URL"`
+	MinioUseSSL        bool   `mapstructure:"MINIO_USE_SSL"`
 
 	// JWT
 	AuthSecret           string        `mapstructure:"AUTH_SECRET"`
@@ -103,6 +104,7 @@ func LoadConfig() *Config {
 		MinioSecretKey:       viper.GetString("MINIO_SECRET_KEY"),
 		MinioBucket:          viper.GetString("MINIO_BUCKET"),
 		MinioBaseURL:         viper.GetString("MINIO_BASE_URL"),
+		MinioPublicBaseURL:   viper.GetString("MINIO_PUBLIC_BASE_URL"),
 		MinioUseSSL:          viper.GetBool("MINIO_USE_SSL"),
 		AuthSecret:           viper.GetString("AUTH_SECRET"),
 		AccessTokenDuration:  viper.GetDuration("ACCESS_TOKEN_DURATION"),

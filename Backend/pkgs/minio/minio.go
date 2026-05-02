@@ -23,12 +23,13 @@ type IUploadService interface {
 }
 
 type MinioClient struct {
-	Client  *minio.Client
-	Bucket  string
-	BaseURL string
+	Client        *minio.Client
+	Bucket        string
+	BaseURL       string
+	PublicBaseURL string
 }
 
-func NewMinioClient(endpoint, accessKey, secretKey, bucket, baseURL string, useSSL bool) (*MinioClient, error) {
+func NewMinioClient(endpoint, accessKey, secretKey, bucket, baseURL, publicBaseURL string, useSSL bool) (*MinioClient, error) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: useSSL,
@@ -53,9 +54,10 @@ func NewMinioClient(endpoint, accessKey, secretKey, bucket, baseURL string, useS
 	logger.Info("MinIO connection established")
 
 	return &MinioClient{
-		Client:  client,
-		Bucket:  bucket,
-		BaseURL: baseURL,
+		Client:        client,
+		Bucket:        bucket,
+		BaseURL:       baseURL,
+		PublicBaseURL: publicBaseURL,
 	}, nil
 }
 
@@ -116,7 +118,14 @@ func (m *MinioClient) GetPresignedURL(ctx context.Context, fileURL string, expir
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
-	return presignedURL.String(), nil
+	
+	// Thay thế internal endpoint bằng public endpoint cho client truy cập
+	urlStr := presignedURL.String()
+	if m.PublicBaseURL != "" && m.PublicBaseURL != m.BaseURL {
+		urlStr = strings.Replace(urlStr, m.BaseURL, m.PublicBaseURL, 1)
+	}
+	
+	return urlStr, nil
 }
 
 func (m *MinioClient) DeleteFile(ctx context.Context, fileURL string) error {

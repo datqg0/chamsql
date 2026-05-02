@@ -185,6 +185,7 @@ func provideMinio(cfg *configs.Config) miniopkg.IUploadService {
 		cfg.MinioSecretKey,
 		cfg.MinioBucket,
 		cfg.MinioBaseURL,
+		cfg.MinioPublicBaseURL,
 		cfg.MinioUseSSL,
 	)
 	if err != nil {

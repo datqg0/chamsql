@@ -45,10 +45,6 @@ func Routes(rg *gin.RouterGroup, database *db.Database, queryRunner runner.Runne
 			lecturerRoutes.DELETE("/:id/participants/:userId", handler.RemoveParticipant)
 		}
 
-		// Student actions
-		exams.POST("/:id/start", handler.StartExam)
-		exams.POST("/:id/submit", handler.SubmitAnswer)
-		exams.POST("/:id/finish", handler.FinishExam)
 	}
 
 	// Student's exam list
