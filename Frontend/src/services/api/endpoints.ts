@@ -36,6 +36,7 @@ export const API_ENDPOINTS = {
         importUsers: '/admin/users/import',
         updateRole: (id: number) => `/admin/users/${id}/role`,
         toggleActive: (id: number) => `/admin/users/${id}/active`,
+        deleteUser: (id: number) => `/admin/users/${id}`,
         sandboxStatus: '/admin/sandbox/status',
         sandboxTest: '/admin/sandbox/test',
     },

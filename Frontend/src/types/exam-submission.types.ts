@@ -60,8 +60,20 @@ export interface ExamProblemDetail {
   points: number;
   sortOrder: number;
   initScript?: string;
-  solutionQuery?: string;
   submissionStatus?: "answered" | "unanswered" | "skipped";
+  submissions?: StudentSubmissionBrief[];
+}
+
+export interface StudentSubmissionBrief {
+  submissionId: number;
+  code: string;
+  status: string;
+  score: number;
+  isCorrect: boolean;
+  attemptNumber: number;
+  executionTimeMs?: number;
+  errorMessage?: string;
+  submittedAt: string;
 }
 
 export type ExamFinishRequest = Record<string, never>

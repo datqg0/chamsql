@@ -41,14 +41,10 @@ export interface AuthUserData {
     studentId: string
 }
 
-export interface AuthResponse {
-    code: number
-    message: string
-    data: {
-        accessToken: string
-        refreshToken: string
-        expiresIn: number
-        user: AuthUserData
-    }
+export interface AuthResponseData {
+    accessToken: string
+    refreshToken: string
+    expiresIn: number
+    user: AuthUserData
 }
 

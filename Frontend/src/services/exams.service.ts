@@ -10,16 +10,6 @@ import type {
 import { api } from './api/client'
 import { API_ENDPOINTS } from './api/endpoints'
 
-interface BaseResponse<T> {
-    code?: number;
-    message?: string;
-    data?: T;
-}
-
-interface ListExamsData {
-    exams: Exam[];
-}
-
 interface PdfUploadResponse {
     id?: number;
     message?: string;
@@ -27,36 +17,25 @@ interface PdfUploadResponse {
 
 export const examsService = {
     async list(): Promise<Exam[]> {
-        const { data } = await api.get<BaseResponse<Exam[] | ListExamsData> | Exam[]>(API_ENDPOINTS.exams.list)
+        const { data } = await api.get<{ exams: Exam[] } | Exam[]>(API_ENDPOINTS.exams.list)
         
         if (Array.isArray(data)) {
             return data
         }
-        if (data && data.data) {
-            if (Array.isArray(data.data)) {
-                return data.data
-            }
-            if ('exams' in data.data && Array.isArray(data.data.exams)) {
-                return data.data.exams
-            }
+        if (data && 'exams' in data && Array.isArray(data.exams)) {
+            return data.exams
         }
         return []
     },
 
     async create(exam: CreateExamRequest): Promise<Exam> {
-        const { data } = await api.post<BaseResponse<Exam> | Exam>(API_ENDPOINTS.exams.create, exam)
-        if (data && 'data' in data && data.data) {
-            return data.data
-        }
-        return data as Exam
+        const { data } = await api.post<Exam>(API_ENDPOINTS.exams.create, exam)
+        return data
     },
 
     async getById(examId: number): Promise<Exam> {
-        const { data } = await api.get<BaseResponse<Exam> | Exam>(API_ENDPOINTS.exams.byId(examId))
-        if (data && 'data' in data && data.data) {
-            return data.data
-        }
-        return data as Exam
+        const { data } = await api.get<Exam>(API_ENDPOINTS.exams.byId(examId))
+        return data
     },
 
     async addProblem(examId: number, request: AddExamProblemRequest): Promise<void> {
@@ -68,27 +47,13 @@ export const examsService = {
     },
 
     async listParticipants(examId: number): Promise<ExamParticipant[]> {
-        const { data } = await api.get<BaseResponse<ExamParticipant[]> | ExamParticipant[]>(API_ENDPOINTS.exams.listParticipants(examId))
-        if (Array.isArray(data)) {
-            return data
-        }
-        if (data && data.data && Array.isArray(data.data)) {
-            return data.data
-        }
-        return []
+        const { data } = await api.get<ExamParticipant[]>(API_ENDPOINTS.exams.listParticipants(examId))
+        return Array.isArray(data) ? data : []
     },
 
-
-
     async getMyExams(): Promise<MyExam[]> {
-        const { data } = await api.get<BaseResponse<MyExam[]> | MyExam[]>(API_ENDPOINTS.exams.myExams)
-        if (Array.isArray(data)) {
-            return data
-        }
-        if (data && data.data && Array.isArray(data.data)) {
-            return data.data
-        }
-        return []
+        const { data } = await api.get<MyExam[]>(API_ENDPOINTS.exams.myExams)
+        return Array.isArray(data) ? data : []
     },
 
     // Upload file for exam import (PDF, Excel, Doc)
@@ -96,7 +61,7 @@ export const examsService = {
         const formData = new FormData()
         formData.append('file', file)
 
-        const { data } = await api.post<BaseResponse<PdfUploadResponse> | PdfUploadResponse>(
+        const { data } = await api.post<PdfUploadResponse>(
             API_ENDPOINTS.pdf.upload,
             formData,
             {
@@ -106,11 +71,9 @@ export const examsService = {
             }
         )
 
-        const payload = (data && 'data' in data && data.data) ? data.data : (data as PdfUploadResponse)
-        
         return {
-            success: Boolean(payload?.id),
-            message: payload?.message,
+            success: Boolean(data?.id),
+            message: data?.message,
         }
     },
 }

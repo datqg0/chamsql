@@ -1,4 +1,5 @@
-import * as types from "@/types/exam-submission.types";
+import type * as raw from "@/types/api-raw.types";
+import type * as types from "@/types/exam-submission.types";
 
 import { api } from "./api/client";
 
@@ -16,47 +17,46 @@ const unwrapPayload = <T>(payload: unknown): T => {
   return payload as T;
 };
 
-const mapExamProblemBrief = (problem: unknown): types.ExamProblemBrief => ({
-  examProblemID: Number(problem.exam_problem_id ?? problem.examProblemID ?? 0),
-  problemID: Number(problem.problem_id ?? problem.problemID ?? 0),
-  title: problem.title ?? "",
-  difficulty: problem.difficulty ?? "",
-  points: Number(problem.points ?? 0),
-  sortOrder: Number(problem.sort_order ?? problem.sortOrder ?? 0),
+const mapExamProblemBrief = (p: raw.RawExamProblemBrief): types.ExamProblemBrief => ({
+  examProblemID: Number(p.exam_problem_id ?? p.examProblemID ?? 0),
+  problemID: Number(p.problem_id ?? p.problemID ?? 0),
+  title: p.title ?? "",
+  difficulty: p.difficulty ?? "",
+  points: Number(p.points ?? 0),
+  sortOrder: Number(p.sort_order ?? p.sortOrder ?? 0),
 });
 
-const mapExamProblemDetail = (problem: unknown): types.ExamProblemDetail => ({
-  examProblemID: Number(problem.exam_problem_id ?? problem.examProblemID ?? 0),
-  problemID: Number(problem.problem_id ?? problem.problemID ?? 0),
-  title: problem.title ?? "",
-  description: problem.description ?? "",
-  difficulty: problem.difficulty ?? "",
-  points: Number(problem.points ?? 0),
-  sortOrder: Number(problem.sort_order ?? problem.sortOrder ?? 0),
-  initScript: problem.init_script ?? problem.initScript,
-  solutionQuery: problem.solution_query ?? problem.solutionQuery,
+const mapExamProblemDetail = (p: raw.RawExamProblemDetail): types.ExamProblemDetail => ({
+  examProblemID: Number(p.exam_problem_id ?? p.examProblemID ?? 0),
+  problemID: Number(p.problem_id ?? p.problemID ?? 0),
+  title: p.title ?? "",
+  description: p.description ?? "",
+  difficulty: p.difficulty ?? "",
+  points: Number(p.points ?? 0),
+  sortOrder: Number(p.sort_order ?? p.sortOrder ?? 0),
+  initScript: p.init_script ?? p.initScript,
 });
 
-const mapSubmitResult = (payload: unknown): types.ProblemSubmissionResult => ({
-  submissionID: Number(payload.submission_id ?? payload.submissionID ?? 0),
-  examID: Number(payload.exam_id ?? payload.examID ?? 0),
-  examProblemID: Number(payload.exam_problem_id ?? payload.examProblemID ?? 0),
-  status: payload.status ?? "error",
-  score: Number(payload.score ?? 0),
-  isCorrect: Boolean(payload.is_correct ?? payload.isCorrect),
-  actualOutput: payload.actual_output ?? payload.actualOutput,
-  expectedOutput: payload.expected_output ?? payload.expectedOutput,
-  errorMessage: payload.error_message ?? payload.errorMessage,
-  executionTimeMs: payload.execution_time_ms ?? payload.executionTimeMs,
-  attemptNumber: Number(payload.attempt_number ?? payload.attemptNumber ?? 0),
-  scoringMode: payload.scoring_mode ?? payload.scoringMode,
+const mapSubmitResult = (p: raw.RawSubmitResult): types.ProblemSubmissionResult => ({
+  submissionID: Number(p.submission_id ?? p.submissionID ?? 0),
+  examID: Number(p.exam_id ?? p.examID ?? 0),
+  examProblemID: Number(p.exam_problem_id ?? p.examProblemID ?? 0),
+  status: (p.status ?? "error") as types.ProblemSubmissionResult["status"],
+  score: Number(p.score ?? 0),
+  isCorrect: Boolean(p.is_correct ?? p.isCorrect),
+  actualOutput: p.actual_output ?? p.actualOutput,
+  expectedOutput: p.expected_output ?? p.expectedOutput,
+  errorMessage: p.error_message ?? p.errorMessage ?? undefined,
+  executionTimeMs: p.execution_time_ms ?? p.executionTimeMs ?? undefined,
+  attemptNumber: Number(p.attempt_number ?? p.attemptNumber ?? 0),
+  scoringMode: p.scoring_mode ?? p.scoringMode,
 });
 
 export const examSubmissionService = {
   // Get exam details with all problems
   getExamWithProblems: async (examID: number): Promise<types.ExamProblemsResponse> => {
     const response = await api.get(`${BASE_URL}/${examID}`);
-    const payload = unwrapPayload<unknown>(response.data);
+    const payload = unwrapPayload<raw.RawExamResponse>(response.data);
     return {
       examID: Number(payload.exam_id ?? payload.examID ?? 0),
       title: payload.title ?? "",
@@ -76,7 +76,7 @@ export const examSubmissionService = {
   // Join exam - explicitly register participant
   joinExam: async (examID: number): Promise<{ participantID: number; status: string }> => {
     const response = await api.post(`${BASE_URL}/join`, { exam_id: examID });
-    const payload = unwrapPayload<unknown>(response.data);
+    const payload = unwrapPayload<raw.RawJoinExamResponse>(response.data);
     return {
       participantID: Number(payload.participant_id ?? payload.participantID ?? 0),
       status: payload.status ?? "registered",
@@ -86,7 +86,7 @@ export const examSubmissionService = {
   // Start exam - set started_at and get initial state
   startExam: async (examID: number): Promise<types.ExamTimerResponse> => {
     const response = await api.post(`${BASE_URL}/start`, { exam_id: examID });
-    const payload = unwrapPayload<unknown>(response.data);
+    const payload = unwrapPayload<raw.RawStartExamResponse>(response.data);
     return {
       participantID: Number(payload.participant_id ?? payload.participantID ?? 0),
       examID: Number(payload.exam_id ?? payload.examID ?? examID),
@@ -99,7 +99,7 @@ export const examSubmissionService = {
   // Get remaining time for exam
   getTimeRemaining: async (examID: number): Promise<types.TimeRemainingResponse> => {
     const response = await api.get(`${BASE_URL}/${examID}/time-remaining`);
-    const payload = unwrapPayload<unknown>(response.data);
+    const payload = unwrapPayload<raw.RawTimeRemainingResponse>(response.data);
     return {
       examID: Number(payload.exam_id ?? payload.examID ?? examID),
       timeRemainingMs: Number(payload.time_remaining_ms ?? payload.timeRemainingMs ?? 0),
@@ -116,7 +116,7 @@ export const examSubmissionService = {
     const response = await api.get(
       `${BASE_URL}/${examID}/problems/${problemID}`
     );
-    const payload = unwrapPayload<unknown>(response.data);
+    const payload = unwrapPayload<raw.RawExamProblemDetail>(response.data);
     return mapExamProblemDetail(payload);
   },
 
@@ -133,7 +133,7 @@ export const examSubmissionService = {
         database_type: req.databaseType || "postgresql",
       }
     );
-    return mapSubmitResult(unwrapPayload<unknown>(response.data));
+    return mapSubmitResult(unwrapPayload<raw.RawSubmitResult>(response.data));
   },
 
   // Finish/submit entire exam
@@ -141,7 +141,7 @@ export const examSubmissionService = {
     const response = await api.post(`${BASE_URL}/submit`, {
       exam_id: examID,
     });
-    const payload = unwrapPayload<unknown>(response.data);
+    const payload = unwrapPayload<raw.RawSubmitExamResponse>(response.data);
     return {
       participantID: Number(payload.participant_id ?? payload.participantID ?? 0),
       examID: Number(payload.exam_id ?? payload.examID ?? examID),

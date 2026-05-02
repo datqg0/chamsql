@@ -16,31 +16,42 @@ export interface UserListResponse {
 
 export const adminService = {
     async getStats(): Promise<AdminStats> {
-        const { data } = await api.get<unknown>(API_ENDPOINTS.admin.stats)
-        return data?.data ?? data
+        const { data } = await api.get<AdminStats>(API_ENDPOINTS.admin.stats)
+        return data
     },
 
     async getUsers(page = 1, pageSize = 20): Promise<UserListResponse> {
-        const { data } = await api.get<unknown>(
+        const { data } = await api.get<UserListResponse>(
             API_ENDPOINTS.admin.users,
             { params: { page, pageSize } }
         )
-        return data?.data ?? data
+        return data
     },
 
     async importUsers(request: ImportUsersRequest): Promise<{ success: boolean; message: string }> {
-        const { data } = await api.post<unknown>(
+        const { data } = await api.post<{ success: boolean; message: string }>(
             API_ENDPOINTS.admin.importUsers,
             request
         )
-        return data?.data ?? data
+        return data
     },
 
     async updateUserRole(userId: number, role: string): Promise<{ success: boolean; message: string }> {
-        const { data } = await api.put<unknown>(
+        const { data } = await api.put<{ success: boolean; message: string }>(
             API_ENDPOINTS.admin.updateRole(userId),
             { role }
         )
-        return data?.data ?? data
+        return data
+    },
+
+    async toggleUserActive(userId: number): Promise<{ message: string }> {
+        const { data } = await api.patch<{ message: string }>(
+            API_ENDPOINTS.admin.toggleActive(userId)
+        )
+        return data
+    },
+
+    async deleteUser(userId: number): Promise<void> {
+        await api.delete(API_ENDPOINTS.admin.deleteUser(userId))
     },
 }

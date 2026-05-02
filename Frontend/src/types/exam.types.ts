@@ -28,6 +28,8 @@ export interface TestCaseRequest {
     isHidden: boolean
 }
 
+export type SqlRow = Record<string, string | number | boolean | null>
+
 export interface TestResult {
     testCaseId: number
     testCaseName: string
@@ -35,7 +37,7 @@ export interface TestResult {
     executionMs: number
     isCorrect: boolean
     isHidden: boolean
-    actualOutput?: unknown
+    actualOutput?: SqlRow[]
     errorMessage?: string
 }
 
@@ -82,8 +84,8 @@ export interface Submission {
     totalTests?: number
     passedTests?: number
     errorMessage?: string
-    expectedOutput?: unknown
-    actualOutput?: unknown
+    expectedOutput?: SqlRow[]
+    actualOutput?: SqlRow[]
     testResults?: TestResult[]
     submittedAt: string
     createdAt?: string
@@ -104,7 +106,7 @@ export interface RunQueryRequest {
 export interface RunQueryResponse {
     success: boolean
     columns?: string[]
-    rows?: unknown[]
+    rows?: SqlRow[]
     rowCount: number
     executionMs: number
     error?: string
@@ -242,4 +244,20 @@ export interface ImportUserDto {
 
 export interface ImportUsersRequest {
     users: ImportUserDto[]
+}
+
+export interface ExamResultSummary {
+    examId: number
+    examTitle: string
+    studentId: number
+    totalScore: number
+    status: 'not_started' | 'in_progress' | 'finished' | 'expired'
+    submittedAt: string
+}
+
+export interface ExamResultListResponse {
+    results: ExamResultSummary[]
+    total: number
+    page: number
+    limit: number
 }
