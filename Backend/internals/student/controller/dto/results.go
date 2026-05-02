@@ -10,16 +10,21 @@ type ExamResult struct {
 }
 
 type ExamResultDetail struct {
-	ExamID       int64                 `json:"exam_id"`
-	Title        string                `json:"title"`
-	Description  string                `json:"description"`
-	TotalScore   float64               `json:"total_score"`
-	DurationMins int32                 `json:"duration_minutes"`
-	StartTime    string                `json:"start_time"`
-	EndTime      string                `json:"end_time"`
-	SubmittedAt  string                `json:"submitted_at"`
-	Status       string                `json:"status"`
-	Problems     []ProblemResultDetail `json:"problems"`
+	ExamID      int64                  `json:"examId"`
+	UserID      int64                  `json:"userId"`
+	TotalScore  float64                `json:"totalScore"`
+	Status      string                 `json:"status"`
+	SubmittedAt string                 `json:"submittedAt"`
+	Submissions []ExamSubmissionResult `json:"submissions"`
+}
+
+type ExamSubmissionResult struct {
+	ProblemID    int64   `json:"problemId"`
+	ProblemTitle string  `json:"problemTitle"`
+	ProblemSlug  string  `json:"problemSlug"`
+	Score        float64 `json:"score"`
+	IsCorrect    bool    `json:"isCorrect"`
+	SubmittedAt  string  `json:"submittedAt"`
 }
 
 type ProblemResultDetail struct {
@@ -60,14 +65,8 @@ type StudentRanking struct {
 }
 
 type ExamAnalytics struct {
-	ExamID        int64         `json:"exam_id"`
-	Title         string        `json:"title"`
-	TotalStudents int64         `json:"total_students"`
-	AvgScore      float64       `json:"avg_score"`
-	HighestScore  float64       `json:"highest_score"`
-	LowestScore   float64       `json:"lowest_score"`
-	PassRate      float64       `json:"pass_rate"`
-	ProblemsStats []ProblemStat `json:"problems_stats"`
+	ExamID  int64  `json:"examId"`
+	Message string `json:"message"`
 }
 
 type ProblemStat struct {

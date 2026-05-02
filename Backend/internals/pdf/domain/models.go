@@ -82,7 +82,9 @@ type ProblemDraft struct {
 	InitScript    string          `json:"init_script"`
 	TestCases     []TestCaseData  `json:"test_cases"`
 	SampleOutput  json.RawMessage `json:"sample_output"`
-	Hints         json.RawMessage `json:"hints"`
+	Hints               json.RawMessage `json:"hints"`
+	AIValidationWarning string          `json:"ai_validation_warning,omitempty"`
+	AIValidationPassed  bool            `json:"ai_validation_passed"`
 }
 
 // ValidationResult represents test validation result

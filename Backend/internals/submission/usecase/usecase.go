@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"backend/configs"
 	"backend/internals/problem/repository"
 	"backend/internals/submission/controller/dto"
-	"backend/internals/submission/domain"
 	submissionRepo "backend/internals/submission/repository"
 	"backend/pkgs/runner"
 	"backend/sql/models"
@@ -230,31 +228,7 @@ func (u *submissionUseCase) Submit(ctx context.Context, userID, problemID int64,
 		})
 	}
 
-	// Publish submission.created or submission.graded event
-	eventType := domain.EventTypeSubmissionCreated
-	if finalStatus != "pending" {
-		eventType = domain.EventTypeSubmissionGraded
-	}
-
-	eventEnvelope := domain.NewSubmissionEventEnvelope(
-		eventType,
-		submission.ID,
-		domain.SubmissionEventPayload{
-			SubmissionID: submission.ID,
-			UserID:       userID,
-			Status:       finalStatus,
-			Score:        score,
-			SubmittedAt:  time.Now().UTC(),
-		},
-		"", // correlation ID can be empty for new events
-	)
-
-	if u.outboxRepo != nil {
-		if err := u.outboxRepo.PublishEvent(ctx, "chamsql-submission-events-v1", eventEnvelope); err != nil {
-			// Log error but don't fail the request
-		}
-	}
-
+	// Event publishing has been removed
 	return &dto.SubmitQueryResponse{
 		ID:          submission.ID,
 		IsCorrect:   isCorrectFinal,

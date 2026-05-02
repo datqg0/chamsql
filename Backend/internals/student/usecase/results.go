@@ -199,8 +199,60 @@ func (su *studentResultsUseCase) GetExamResults(ctx context.Context, userID int6
 }
 
 func (su *studentResultsUseCase) GetExamResultDetail(ctx context.Context, examID, userID int64) (*dto.ExamResultDetail, error) {
-	// NOTE: GetExamProblemsForStudent query not yet implemented
-	return nil, fmt.Errorf("exam result detail loading not yet implemented")
+	// Lấy thông tin participant
+	var status string
+	var totalScore float64
+	var submittedAt time.Time
+
+	err := su.db.GetPool().QueryRow(ctx,
+		`SELECT ep.status, COALESCE(ep.total_score, 0), COALESCE(ep.submitted_at, NOW())
+         FROM exam_participants ep
+         WHERE ep.exam_id = $1 AND ep.user_id = $2`,
+		examID, userID,
+	).Scan(&status, &totalScore, &submittedAt)
+	if err != nil {
+		return nil, fmt.Errorf("not registered for this exam")
+	}
+
+	// Lấy danh sách submissions của user trong exam này
+	rows, err := su.db.GetPool().Query(ctx,
+		`SELECT es.problem_id, p.title, p.slug,
+                COALESCE(es.score, 0), es.is_correct,
+                es.submitted_at
+         FROM exam_submissions es
+         JOIN problems p ON p.id = es.problem_id
+         WHERE es.exam_id = $1 AND es.user_id = $2
+         ORDER BY es.problem_id`,
+		examID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get submissions: %w", err)
+	}
+	defer rows.Close()
+
+	var submissions []dto.ExamSubmissionResult
+	for rows.Next() {
+		var s dto.ExamSubmissionResult
+		var sat time.Time
+		if err := rows.Scan(&s.ProblemID, &s.ProblemTitle, &s.ProblemSlug,
+			&s.Score, &s.IsCorrect, &sat); err != nil {
+			continue
+		}
+		s.SubmittedAt = sat.Format(time.RFC3339)
+		submissions = append(submissions, s)
+	}
+	if submissions == nil {
+		submissions = []dto.ExamSubmissionResult{}
+	}
+
+	return &dto.ExamResultDetail{
+		ExamID:      examID,
+		UserID:      userID,
+		TotalScore:  totalScore,
+		Status:      status,
+		SubmittedAt: submittedAt.Format(time.RFC3339),
+		Submissions: submissions,
+	}, nil
 }
 
 func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int64, req *dto.RankingRequest) (*dto.ClassRankingResponse, error) {
@@ -239,14 +291,16 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 	offset := (req.Page - 1) * req.Limit
 
 	rows, err := su.db.GetPool().Query(ctx,
-		`SELECT ep.user_id, ep.total_score, 
-		        ROW_NUMBER() OVER (ORDER BY ep.total_score DESC) as rank,
-		        ROUND(100.0 * ROW_NUMBER() OVER (ORDER BY ep.total_score DESC) / 
-		              COUNT(*) OVER ()) as percentile
-		 FROM exam_participants ep
-		 WHERE ep.exam_id = $1 AND ep.submitted_at IS NOT NULL
-		 ORDER BY ep.total_score DESC
-		 LIMIT $2 OFFSET $3`,
+		`SELECT ep.user_id, u.full_name,
+            COALESCE(ep.total_score, 0),
+            ROW_NUMBER() OVER (ORDER BY ep.total_score DESC NULLS LAST) as rank,
+            ROUND(100.0 * ROW_NUMBER() OVER (ORDER BY ep.total_score DESC NULLS LAST) /
+                  NULLIF(COUNT(*) OVER (), 0)) as percentile
+     FROM exam_participants ep
+     JOIN users u ON u.id = ep.user_id
+     WHERE ep.exam_id = $1 AND ep.submitted_at IS NOT NULL
+     ORDER BY ep.total_score DESC NULLS LAST
+     LIMIT $2 OFFSET $3`,
 		examID, req.Limit, offset)
 
 	if err != nil {
@@ -257,10 +311,11 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 	rankings := make([]dto.StudentRanking, 0)
 	for rows.Next() {
 		var userID int64
+		var fullName string
 		var totalScore interface{}
 		var rank, percentile int32
 
-		if err := rows.Scan(&userID, &totalScore, &rank, &percentile); err != nil {
+		if err := rows.Scan(&userID, &fullName, &totalScore, &rank, &percentile); err != nil {
 			continue
 		}
 
@@ -272,7 +327,7 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 		rankings = append(rankings, dto.StudentRanking{
 			Rank:        rank,
 			StudentID:   userID,
-			StudentName: fmt.Sprintf("Student %d", userID),
+			StudentName: fullName,
 			Score:       score,
 			Percentile:  float64(percentile),
 		})
@@ -289,8 +344,10 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 }
 
 func (su *studentResultsUseCase) GetExamAnalytics(ctx context.Context, examID int64) (*dto.ExamAnalytics, error) {
-	// NOTE: GetExamProblemsForStudent query not yet implemented
-	return nil, fmt.Errorf("exam analytics loading not yet implemented")
+	return &dto.ExamAnalytics{
+		ExamID:  examID,
+		Message: "Analytics feature coming soon.",
+	}, nil
 }
 
 func convertNumericToFloat64(val interface{}) float64 {

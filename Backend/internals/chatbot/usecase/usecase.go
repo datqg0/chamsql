@@ -70,18 +70,30 @@ func (u *chatbotUseCase) Ask(ctx context.Context, req *dto.ChatRequest) (*dto.Ch
 	// Rate limit: tối đa 30 requests/user/giờ
 	if req.UserID != nil && u.redis != nil {
 		rateLimitKey := fmt.Sprintf("chatbot_rl:%d", *req.UserID)
-		var count int
-		if err := u.redis.Get(rateLimitKey, &count); err != nil {
-			// Key chưa tồn tại = lần đầu gọi trong giờ này
-			count = 0
+		var entry struct {
+			Count    int       `json:"count"`
+			ExpireAt time.Time `json:"expireAt"`
 		}
-		if count >= 30 {
+		
+		now := time.Now()
+		if err := u.redis.Get(rateLimitKey, &entry); err != nil {
+			// Lần đầu gọi trong window
+			entry.Count = 0
+			entry.ExpireAt = now.Add(1 * time.Hour)
+		} else if now.After(entry.ExpireAt) {
+			// Đã qua 1 giờ, reset
+			entry.Count = 0
+			entry.ExpireAt = now.Add(1 * time.Hour)
+		}
+		
+		if entry.Count >= 30 {
 			return nil, fmt.Errorf("bạn đã dùng hết lượt hỗ trợ AI trong giờ này (tối đa 30 lượt/giờ). Vui lòng thử lại sau")
 		}
-		newCount := count + 1
-		// Tăng count và set TTL 1 giờ
-		if err := u.redis.SetWithExpiration(rateLimitKey, newCount, 1*time.Hour); err != nil {
-			// Log nhưng không block request nếu Redis lỗi
+		
+		entry.Count++
+		// Tăng count và giữ nguyên TTL cũ bằng time.Until
+		ttl := time.Until(entry.ExpireAt)
+		if err := u.redis.SetWithExpiration(rateLimitKey, entry, ttl); err != nil {
 			fmt.Printf("Failed to update rate limit counter: %v\n", err)
 		}
 	}

@@ -28,30 +28,30 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		lecturer.GET("/classes/:id", handler.GetClass)
 
 		// PUT /lecturer/classes/:id - Update class
-		lecturer.PUT("/lecturer/classes/:id", handler.UpdateClass)
+		lecturer.PUT("/classes/:id", handler.UpdateClass)
 
 		// DELETE /lecturer/classes/:id - Delete class
-		lecturer.DELETE("/lecturer/classes/:id", handler.DeleteClass)
+		lecturer.DELETE("/classes/:id", handler.DeleteClass)
 
 		// CLASS MEMBERS ROUTES
 		// POST /lecturer/classes/:id/members - Add member to class
-		lecturer.POST("/lecturer/classes/:id/members", handler.AddClassMember)
+		lecturer.POST("/classes/:id/members", handler.AddClassMember)
 
 		// GET /lecturer/classes/:id/members - List class members
-		lecturer.GET("/lecturer/classes/:id/members", handler.ListClassMembers)
+		lecturer.GET("/classes/:id/members", handler.ListClassMembers)
 
 		// DELETE /lecturer/classes/:id/members/:userId - Remove member from class
-		lecturer.DELETE("/lecturer/classes/:id/members/:userId", handler.RemoveClassMember)
+		lecturer.DELETE("/classes/:id/members/:userId", handler.RemoveClassMember)
 
 		// CLASS EXAMS ROUTES
 		// POST /lecturer/classes/:id/exams - Assign exam to class
-		lecturer.POST("/lecturer/classes/:id/exams", handler.AssignExamToClass)
+		lecturer.POST("/classes/:id/exams", handler.AssignExamToClass)
 
 		// GET /lecturer/classes/:id/exams - List class exams
-		lecturer.GET("/lecturer/classes/:id/exams", handler.ListClassExams)
+		lecturer.GET("/classes/:id/exams", handler.ListClassExams)
 
 		// DELETE /lecturer/classes/:id/exams/:examId - Remove exam from class
-		lecturer.DELETE("/lecturer/classes/:id/exams/:examId", handler.RemoveExamFromClass)
+		lecturer.DELETE("/classes/:id/exams/:examId", handler.RemoveExamFromClass)
 
 		// GRADING ROUTES
 		// GET /lecturer/submissions/:submissionId - View submission for grading

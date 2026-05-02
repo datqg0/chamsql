@@ -53,11 +53,13 @@ type ProblemReviewResponse struct {
 	SolutionQuery string          `json:"solution_query"`
 	InitScript    string          `json:"init_script"`
 	TestCases     json.RawMessage `json:"test_cases"`
-	Status        string          `json:"status"`
-	ReviewerID    *int64          `json:"reviewer_id,omitempty"`
-	ReviewNotes   string          `json:"review_notes,omitempty"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
+	Status              string          `json:"status"`
+	ReviewerID          *int64          `json:"reviewer_id,omitempty"`
+	ReviewNotes         string          `json:"review_notes,omitempty"`
+	AIValidationWarning string          `json:"aiValidationWarning,omitempty"`
+	AIValidationPassed  bool            `json:"aiValidationPassed"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
 // ApproveReviewRequest is the request to approve a problem review

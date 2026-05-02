@@ -225,6 +225,18 @@ func (m *uploadManager) GenerateAIContent(ctx context.Context, pdfUploadID int64
 			}
 		}
 
+		// Lưu kết quả validation vào draft để giảng viên biết
+		if completeProblem.ValidationResult != nil {
+			draft.AIValidationPassed = completeProblem.ValidationResult.IsValid
+			if !completeProblem.ValidationResult.IsValid {
+				draft.AIValidationWarning = fmt.Sprintf(
+					"⚠️ AI solution chỉ pass %d/%d test cases. Vui lòng kiểm tra lại solution trước khi confirm.",
+					completeProblem.ValidationResult.PassedCount,
+					completeProblem.ValidationResult.TotalCount,
+				)
+			}
+		}
+
 		updatedDraft, err := json.Marshal(draft)
 		if err != nil {
 			return fmt.Errorf("failed to marshal updated draft: %w", err)

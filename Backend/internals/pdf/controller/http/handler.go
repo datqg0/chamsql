@@ -225,11 +225,13 @@ func (h *PDFHandler) GetProblems(c *gin.Context) {
 		}
 		// Parse the draft to get title, description, etc.
 		var draft struct {
-			Title         string `json:"title"`
-			Description   string `json:"description"`
-			Difficulty    string `json:"difficulty"`
-			SolutionQuery string `json:"solution_query"`
-			InitScript    string `json:"init_script"`
+			Title               string `json:"title"`
+			Description         string `json:"description"`
+			Difficulty          string `json:"difficulty"`
+			SolutionQuery       string `json:"solution_query"`
+			InitScript          string `json:"init_script"`
+			AIValidationWarning string `json:"ai_validation_warning"`
+			AIValidationPassed  bool   `json:"ai_validation_passed"`
 		}
 		if err := json.Unmarshal(p.ProblemDraft, &draft); err == nil {
 			problemDTOs[i].Title = draft.Title
@@ -237,6 +239,8 @@ func (h *PDFHandler) GetProblems(c *gin.Context) {
 			problemDTOs[i].Difficulty = draft.Difficulty
 			problemDTOs[i].SolutionQuery = draft.SolutionQuery
 			problemDTOs[i].InitScript = draft.InitScript
+			problemDTOs[i].AIValidationWarning = draft.AIValidationWarning
+			problemDTOs[i].AIValidationPassed = draft.AIValidationPassed
 		}
 	}
 

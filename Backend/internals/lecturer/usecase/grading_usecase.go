@@ -68,8 +68,22 @@ func NewGradingUseCase(database *db.Database) IGradingUseCase {
 //   - Updates score, graded_by, graded_at columns
 //   - Returns formatted response with all relevant submission details
 func (gu *gradingUseCase) GradeSubmission(ctx context.Context, submissionID, lecturerID int64, req *dto.GradeSubmissionRequest) (*dto.SubmissionGradingResponse, error) {
-	// NOTE: GetExamSubmissionForGrading query not yet implemented
-	return nil, fmt.Errorf("grading functionality not yet implemented")
+    if req.Score < 0 || req.Score > 100 {
+        return nil, fmt.Errorf("score must be between 0 and 100")
+    }
+
+    now := time.Now()
+    _, err := gu.db.GetPool().Exec(ctx,
+        `UPDATE exam_submissions
+         SET score = $1, graded_by = $2, graded_at = $3, feedback = $4, updated_at = $3
+         WHERE id = $5`,
+        req.Score, lecturerID, now, req.Feedback, submissionID,
+    )
+    if err != nil {
+        return nil, fmt.Errorf("failed to grade submission: %w", err)
+    }
+
+    return gu.buildSubmissionGradingResponse(ctx, submissionID, lecturerID)
 }
 
 // ViewSubmissionForGrading retrieves full submission details for grading interface
@@ -83,49 +97,42 @@ func (gu *gradingUseCase) GradeSubmission(ctx context.Context, submissionID, lec
 //   - *dto.ViewSubmissionResponse: Complete submission details including code, outputs, answers
 //   - error: Returns error if submission not found or permission denied
 func (gu *gradingUseCase) ViewSubmissionForGrading(ctx context.Context, submissionID, lecturerID int64) (*dto.ViewSubmissionResponse, error) {
-	// Get submission with all details
-	row := gu.db.GetPool().QueryRow(ctx,
-		`SELECT es.id, es.exam_id, ep.problem_id, p.title, es.user_id, u.full_name, u.email,
-		        es.code, es.status, ep.scoring_mode, es.score, ep.points, es.is_correct,
-		        es.actual_output, es.expected_output, es.error_message, ep.reference_answer,
-		        es.execution_time_ms, es.attempt_number, es.submitted_at, es.graded_at,
-		        es.graded_by
-		 FROM exam_submissions es
-		 JOIN exam_problems ep ON ep.id = es.exam_problem_id
-		 JOIN problems p ON p.id = ep.problem_id
-		 JOIN users u ON u.id = es.user_id
-		 WHERE es.id = $1`,
-		submissionID)
-
-	var resp dto.ViewSubmissionResponse
-	var gradedBy *int64
+    var resp dto.ViewSubmissionResponse
 	var gradedAt *time.Time
-
-	err := row.Scan(
-		&resp.SubmissionID, &resp.ExamID, &resp.ProblemID, &resp.ProblemTitle,
-		&resp.StudentID, &resp.StudentName, &resp.StudentEmail, &resp.Code,
-		&resp.Status, &resp.ScoringMode, &resp.Score, &resp.MaxPoints, &resp.IsCorrect,
-		&resp.ActualOutput, &resp.ExpectedOutput, &resp.ErrorMessage, &resp.ReferenceAnswer,
-		&resp.ExecutionTimeMs, &resp.AttemptNumber, &resp.SubmittedAt, &gradedAt, &gradedBy)
+	var gradedBy *int64
+	var submittedAt time.Time
+	
+    err := gu.db.GetPool().QueryRow(ctx,
+        `SELECT es.id, es.exam_id, es.user_id, ep.problem_id,
+                u.full_name, u.email,
+                p.title,
+                es.code, COALESCE(es.score, 0), COALESCE(es.is_correct, false),
+                COALESCE(es.feedback, ''), es.submitted_at, es.graded_at, es.graded_by
+         FROM exam_submissions es
+		 JOIN exam_problems ep ON ep.id = es.exam_problem_id
+         JOIN users u ON u.id = es.user_id
+         JOIN problems p ON p.id = ep.problem_id
+         WHERE es.id = $1`,
+        submissionID,
+    ).Scan(
+        &resp.SubmissionID, &resp.ExamID, &resp.StudentID, &resp.ProblemID,
+        &resp.StudentName, &resp.StudentEmail,
+        &resp.ProblemTitle,
+        &resp.Code, &resp.Score, &resp.IsCorrect,
+        &resp.Feedback, &submittedAt, &gradedAt, &gradedBy)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get submission details: %w", err)
 	}
 
-	// Get student answer if available (for answer-key scoring mode)
-	if resp.ScoringMode == "answer_key" {
-		// In answer-key mode, student answer is typically in the code field for SQL queries
-		resp.StudentAnswer = &resp.Code
-	}
+	resp.SubmittedAt = submittedAt.Format(time.RFC3339)
 
-	// Format timestamps
 	if gradedAt != nil {
 		formattedTime := gradedAt.Format(time.RFC3339)
 		resp.GradedAt = &formattedTime
 	}
 	if gradedBy != nil {
 		resp.GradedBy = gradedBy
-		// Get grader name
 		var graderName string
 		err := gu.db.GetPool().QueryRow(ctx,
 			"SELECT full_name FROM users WHERE id = $1", gradedBy).Scan(&graderName)
@@ -136,8 +143,6 @@ func (gu *gradingUseCase) ViewSubmissionForGrading(ctx context.Context, submissi
 
 	return &resp, nil
 }
-
-// ListUngradedSubmissions lists all submissions needing manual grading for an exam
 //
 // Parameters:
 //   - ctx: Context for database operations
