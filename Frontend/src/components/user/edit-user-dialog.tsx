@@ -82,7 +82,7 @@ export function EditUserDialog({ user, onSuccess }: EditUserDialogProps) {
             toast.success('Cập nhật thông tin thành công!')
             setOpen(false)
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Cập nhật thất bại!')
         } finally {
             setIsSubmitting(false)

@@ -77,7 +77,7 @@ export function AddParticipantsDialog({ examId, onSuccess }: AddParticipantsDial
             setSelectedUserIds([])
             setSearchQuery('')
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Thêm sinh viên thất bại!')
         } finally {
             setIsSubmitting(false)

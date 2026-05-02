@@ -4,8 +4,6 @@ import {
     Play,
     Send,
     Loader2,
-    Wifi,
-    WifiOff,
     CheckCircle2,
     Clock,
     FileText,
@@ -24,12 +22,12 @@ import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 
 import { SQLEditor } from '@/components/editor/sql-editor'
-import { ExamImportDialog } from '@/components/exam/exam-import-dialog'
-import { ExamTimer } from '@/components/exam/exam-timer'
-import { ExamNavigation } from '@/components/exam/exam-navigation'
-import { ProblemHeader } from '@/components/exam/problem-header'
 import { ExamAutoSubmitModal } from '@/components/exam/exam-auto-submit-modal'
+import { ExamImportDialog } from '@/components/exam/exam-import-dialog'
+import { ExamNavigation } from '@/components/exam/exam-navigation'
 import { ExamResultsOverview } from '@/components/exam/exam-results-overview'
+import { ExamTimer } from '@/components/exam/exam-timer'
+import { ProblemHeader } from '@/components/exam/problem-header'
 import { ProblemResultDetail } from '@/components/exam/problem-result-detail'
 import { RetakeModal } from '@/components/exam/retake-modal'
 import { MainLayout } from '@/components/layouts/main-layout'
@@ -43,13 +41,12 @@ import {
 } from '@/components/ui/resizable'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSQLChecker } from '@/hooks/use-sql-checker'
-import { useWebSocket } from '@/hooks/use-websocket'
+import { examSubmissionService } from '@/services/exam-submission.service'
 import { examsService } from '@/services/exams.service'
 import { submissionsService } from '@/services/submissions.service'
-import { examSubmissionService } from '@/services/exam-submission.service'
 import { useAuthStore } from '@/stores/use-auth-store'
-import type { MyExam, Exam, Submission } from '@/types/exam.types'
 import type { ProblemSubmissionResult } from '@/types/exam-submission.types'
+import type { MyExam, Exam, Submission } from '@/types/exam.types'
 
 function SubmissionsPage() {
     const navigate = useNavigate()
@@ -61,7 +58,7 @@ function SubmissionsPage() {
     useEffect(() => {
         if (isLecturer && userRole !== 'admin') {
             toast.error('Trang này chỉ dành cho sinh viên!', { id: 'submissions-access-denied' })
-            navigate({ to: '/exams' as any })
+            navigate({ to: '/exams' })
         }
     }, [isLecturer, navigate, userRole])
 
@@ -71,12 +68,12 @@ function SubmissionsPage() {
     const [isLoadingExams, setIsLoadingExams] = useState(true)
     const [isLoadingHistory, setIsLoadingHistory] = useState(false)
     const [selectedExam, setSelectedExam] = useState<MyExam | null>(null)
-    const [examProblems, setExamProblems] = useState<any[]>([])
+    const [examProblems, setExamProblems] = useState<Exam['problems']>([])
     const [currentProblemIndex, setCurrentProblemIndex] = useState(0)
     const [sqlQuery, setSqlQuery] = useState('')
     const [isRunning, setIsRunning] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [result, setResult] = useState<any>(null)
+    const [result, setResult] = useState<unknown>(null)
     const [mobileView, setMobileView] = useState<'problem' | 'editor'>('problem')
     const [answers, setAnswers] = useState<Record<number, string>>({})
     const [solvedProblems, setSolvedProblems] = useState<Record<number, ProblemSubmissionResult>>({})
@@ -94,22 +91,8 @@ function SubmissionsPage() {
         database: 'MySQL',
     })
 
-    const { send, isConnected } = useWebSocket({
-        onMessage: (message) => {
-            if (message.type === 'sql_result') {
-                setResult(message.data)
-                setIsRunning(false)
-            }
-        },
-    })
 
-    // Load exams from API
-    useEffect(() => {
-        loadMyExams()
-        loadSubmissionHistory()
-    }, [])
-
-    const loadMyExams = async () => {
+    const loadMyExams = useCallback(async () => {
         setIsLoadingExams(true)
         try {
             if (isLecturer) {
@@ -126,31 +109,32 @@ function SubmissionsPage() {
             } else {
                 const data = await examsService.getMyExams()
                 const normalized: MyExam[] = (Array.isArray(data) ? data : [])
-                    .map((item: any) => {
+                    .map((item: unknown) => {
+                        const i = item as Record<string, unknown> & { exam?: unknown }
                         // Already in MyExam shape
-                        if (item && item.exam) {
-                            return item as MyExam
+                        if (i && i.exam) {
+                            return i as unknown as MyExam
                         }
 
                         // Fallback: backend may return plain ExamResponse[]
                         const exam: Exam = {
-                            id: Number(item?.id ?? 0),
-                            title: item?.title ?? 'Kỳ thi',
-                            description: item?.description,
-                            startTime: item?.startTime ?? item?.start_time ?? '',
-                            endTime: item?.endTime ?? item?.end_time ?? '',
-                            durationMinutes: Number(item?.durationMinutes ?? item?.duration_minutes ?? 0),
-                            allowedDatabases: item?.allowedDatabases ?? item?.allowed_databases ?? ['postgresql'],
-                            allowAiAssistance: Boolean(item?.allowAiAssistance ?? item?.allow_ai_assistance),
-                            shuffleProblems: Boolean(item?.shuffleProblems ?? item?.shuffle_problems),
-                            showResultImmediately: Boolean(item?.showResultImmediately ?? item?.show_result_immediately),
-                            maxAttempts: Number(item?.maxAttempts ?? item?.max_attempts ?? 1),
-                            isPublic: Boolean(item?.isPublic ?? item?.is_public),
-                            status: item?.status,
-                            problemCount: item?.problemCount ?? item?.problem_count,
+                            id: Number(i?.id ?? 0),
+                            title: String(i?.title ?? 'Kỳ thi'),
+                            description: i?.description as string,
+                            startTime: String(i?.startTime ?? i?.start_time ?? ''),
+                            endTime: String(i?.endTime ?? i?.end_time ?? ''),
+                            durationMinutes: Number(i?.durationMinutes ?? i?.duration_minutes ?? 0),
+                            allowedDatabases: (i?.allowedDatabases ?? i?.allowed_databases ?? ['postgresql']) as string[],
+                            allowAiAssistance: Boolean(i?.allowAiAssistance ?? i?.allow_ai_assistance),
+                            shuffleProblems: Boolean(i?.shuffleProblems ?? i?.shuffle_problems),
+                            showResultImmediately: Boolean(i?.showResultImmediately ?? i?.show_result_immediately),
+                            maxAttempts: Number(i?.maxAttempts ?? i?.max_attempts ?? 1),
+                            isPublic: Boolean(i?.isPublic ?? i?.is_public),
+                            status: i?.status as string,
+                            problemCount: i?.problemCount as number ?? i?.problem_count as number,
                         }
 
-                        const rawStatus = String(item?.status ?? '').toLowerCase()
+                        const rawStatus = String(i?.status ?? '').toLowerCase()
                         let status: MyExam['status'] = 'not_started'
                         if (rawStatus === 'in_progress' || rawStatus === 'ongoing') {
                             status = 'in_progress'
@@ -163,12 +147,12 @@ function SubmissionsPage() {
                             id: exam.id,
                             exam,
                             status,
-                            startedAt: item?.startedAt ?? item?.started_at,
-                            finishedAt: item?.finishedAt ?? item?.finished_at,
-                            score: item?.score,
-                            totalPoints: item?.totalPoints ?? item?.total_points,
-                            attemptNumber: item?.attemptNumber ?? item?.attempt_number,
-                        } as MyExam
+                            startedAt: i?.startedAt ?? i?.started_at,
+                            finishedAt: i?.finishedAt ?? i?.finished_at,
+                            score: i?.score,
+                            totalPoints: i?.totalPoints ?? i?.total_points,
+                            attemptNumber: i?.attemptNumber ?? i?.attempt_number,
+                        } as unknown as MyExam
                     })
                     .filter((x) => x.exam?.id > 0)
 
@@ -181,15 +165,14 @@ function SubmissionsPage() {
         } finally {
             setIsLoadingExams(false)
         }
-    }
+    }, [isLecturer])
 
-    const loadSubmissionHistory = async () => {
+    const loadSubmissionHistory = useCallback(async () => {
         setIsLoadingHistory(true)
         try {
             const response = await submissionsService.list({ page: 1, pageSize: 20 })
-            const data = response as any
-            if (Array.isArray(data?.data)) {
-                setSubmissionHistory(data.data)
+            if (Array.isArray(response.data)) {
+                setSubmissionHistory(response.data)
             } else {
                 setSubmissionHistory([])
             }
@@ -198,7 +181,13 @@ function SubmissionsPage() {
         } finally {
             setIsLoadingHistory(false)
         }
-    }
+    }, [])
+
+    // Load exams from API
+    useEffect(() => {
+        loadMyExams()
+        loadSubmissionHistory()
+    }, [loadMyExams, loadSubmissionHistory])
 
     const getStatusBadge = (status: MyExam['status']) => {
         switch (status) {
@@ -228,7 +217,7 @@ function SubmissionsPage() {
         return now >= start && now <= end
     }
 
-    const getExamProblemKey = (problem: any): number => {
+    const getExamProblemKey = (problem: unknown): number => {
         return Number(
             problem?.examProblemID ??
                 problem?.exam_problem_id ??
@@ -246,6 +235,13 @@ function SubmissionsPage() {
         }
 
         try {
+            // Join exam first (ignore already joined errors)
+            try {
+                await examSubmissionService.joinExam(myExam.exam.id)
+            } catch {
+                // Ignore if already joined
+            }
+
             // Start exam
             await examSubmissionService.startExam(myExam.exam.id)
             
@@ -268,7 +264,7 @@ function SubmissionsPage() {
             setSolvedProblems({})
             
             toast.success('Đã bắt đầu bài thi!')
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error starting exam:', error)
             toast.error(error?.message || 'Không thể bắt đầu bài thi')
         }
@@ -292,34 +288,26 @@ function SubmissionsPage() {
         setIsRunning(true)
         setResult(null)
 
-        if (isConnected) {
-            send({
-                type: 'run_sql_test',
-                data: { query: sqlQuery },
-            })
-        } else {
-            // Fallback - use problems API
-            try {
-                const currentProblem = examProblems[currentProblemIndex]
-                const problemID = Number(
-                    currentProblem?.problemID ??
-                        currentProblem?.problem_id ??
-                        currentProblem?.problem?.id ??
-                        0
-                )
-                if (problemID > 0) {
-                    const { problemsService } = await import('@/services/problems.service')
-                    const response = await problemsService.run(problemID, {
-                        code: sqlQuery,
-                        databaseType: selectedExam.exam.allowedDatabases?.[0] || 'postgresql',
-                    })
-                    setResult(response)
-                }
-            } catch (error: any) {
-                setResult({ success: false, error: error?.message || 'Lỗi khi chạy truy vấn' })
-            } finally {
-                setIsRunning(false)
+        try {
+            const currentProblem = examProblems[currentProblemIndex]
+            const problemID = Number(
+                currentProblem?.problemID ??
+                    currentProblem?.problem_id ??
+                    currentProblem?.problem?.id ??
+                    0
+            )
+            if (problemID > 0) {
+                const { problemsService } = await import('@/services/problems.service')
+                const response = await problemsService.run(problemID, {
+                    code: sqlQuery,
+                    databaseType: selectedExam.exam.allowedDatabases?.[0] || 'postgresql',
+                })
+                setResult(response)
             }
+        } catch (error: unknown) {
+            setResult({ success: false, error: error?.message || 'Lỗi khi chạy truy vấn' })
+        } finally {
+            setIsRunning(false)
         }
     }
 
@@ -378,7 +366,7 @@ function SubmissionsPage() {
                 setSqlQuery(answers[nextProblemID] || '')
                 setResult(null)
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error submitting answer:', error)
             toast.error(error?.message || 'Không thể lưu câu trả lời')
         } finally {
@@ -408,7 +396,7 @@ function SubmissionsPage() {
             setShowAutoSubmitModal(false)
             handleBackToList()
             await loadSubmissionHistory() // Refresh history after finish
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error finishing exam:', error)
             toast.error(error?.message || 'Không thể nộp bài')
         } finally {
@@ -440,7 +428,7 @@ function SubmissionsPage() {
             // Start new attempt
             await handleStartExam(selectedExam)
             toast.success('Bắt đầu lần thi mới!')
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error retaking exam:', error)
             toast.error(error?.message || 'Không thể bắt đầu lại bài thi')
         } finally {
@@ -837,17 +825,7 @@ function SubmissionsPage() {
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        {isConnected ? (
-                            <span className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                                <Wifi className="h-4 w-4" />
-                                <span className="text-sm">Đã kết nối</span>
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-2 text-muted-foreground">
-                                <WifiOff className="h-4 w-4" />
-                                <span className="text-sm">Chưa kết nối</span>
-                            </span>
-                        )}
+
                         {isLecturer && (
                             <ExamImportDialog
                                 onSuccess={() => {
@@ -910,7 +888,7 @@ function SubmissionsPage() {
                                                     {isLecturer ? (
                                                         <Button
                                                             variant="outline"
-                                                            onClick={() => navigate({ to: '/exams' as any })}
+                                                            onClick={() => navigate({ to: '/exams' })}
                                                         >
                                                             Quản lý kỳ thi
                                                         </Button>

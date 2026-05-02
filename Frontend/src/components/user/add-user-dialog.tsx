@@ -71,7 +71,7 @@ export function AddUserDialog({ onSuccess }: AddUserDialogProps) {
             setOpen(false)
             form.reset()
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Tạo người dùng thất bại!')
         } finally {
             setIsSubmitting(false)

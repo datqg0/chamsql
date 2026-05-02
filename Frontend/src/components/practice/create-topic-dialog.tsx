@@ -63,7 +63,7 @@ export function CreateTopicDialog({ onSuccess }: CreateTopicDialogProps) {
             setOpen(false)
             form.reset()
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Tạo chủ đề thất bại!')
         } finally {
             setIsSubmitting(false)

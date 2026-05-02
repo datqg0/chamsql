@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>()(
 
                 isOperator: () => {
                     const state = get()
-                    return state.userRole === 'admin' || state.userRole === 'operator'
+                    return state.userRole === 'admin' || state.userRole === 'lecturer'
                 },
             }),
             {

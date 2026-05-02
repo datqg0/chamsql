@@ -39,8 +39,8 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { gradingService, type Submission } from '@/services/grading.service'
 import { examsService } from '@/services/exams.service'
+import { gradingService, type Submission } from '@/services/grading.service'
 import { useAuthStore } from '@/stores/use-auth-store'
 import type { Exam } from '@/types/exam.types'
 
@@ -68,31 +68,19 @@ function GradingPage() {
     const [gradeScore, setGradeScore] = useState('')
     const [gradeFeedback, setGradeFeedback] = useState('')
 
-    // Load exams on mount
-    useEffect(() => {
-        loadExams()
-    }, [])
-
-    // Load submissions when exam selected
-    useEffect(() => {
-        if (selectedExamId) {
-            loadData()
-        }
-    }, [selectedExamId, filterStatus, searchQuery])
-
-    const loadExams = async () => {
+    const loadExams = useCallback(async () => {
         try {
             const examsData = await examsService.list()
             setExams(examsData)
             if (examsData.length > 0) {
                 setSelectedExamId(examsData[0].id)
             }
-        } catch (error) {
+        } catch {
             toast.error('Không thể tải danh sách kỳ thi')
         }
-    }
+    }, [])
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         if (!selectedExamId) return
 
         setIsLoading(true)
@@ -116,12 +104,24 @@ function GradingPage() {
 
             setSubmissions(filtered)
             setStats(statsData)
-        } catch (error) {
+        } catch {
             toast.error('Không thể tải dữ liệu bài nộp')
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [selectedExamId, filterStatus, searchQuery])
+
+    // Load exams on mount
+    useEffect(() => {
+        loadExams()
+    }, [loadExams])
+
+    // Load submissions when exam selected
+    useEffect(() => {
+        if (selectedExamId) {
+            loadData()
+        }
+    }, [selectedExamId, filterStatus, searchQuery, loadData])
 
     const handleViewDetail = (submission: Submission) => {
         setSelectedSubmission(submission)
@@ -149,8 +149,8 @@ function GradingPage() {
             toast.success('Đã lưu điểm thành công')
             setIsDetailOpen(false)
             loadData()
-        } catch (error: any) {
-            toast.error(error?.message || 'Chấm điểm thất bại')
+        } catch (error: unknown) {
+            toast.error((error as Error)?.message || 'Chấm điểm thất bại')
         } finally {
             setIsGrading(false)
         }
@@ -162,8 +162,8 @@ function GradingPage() {
             const result = await gradingService.autoGrade(submission.id)
             toast.success(`Chấm tự động: ${result.score}/${submission.maxScore} điểm`)
             loadData()
-        } catch (error: any) {
-            toast.error(error?.message || 'Chấm tự động thất bại')
+        } catch (error: unknown) {
+            toast.error((error as Error)?.message || 'Chấm tự động thất bại')
         } finally {
             setIsGrading(false)
         }

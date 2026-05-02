@@ -72,7 +72,7 @@ function RegisterPage() {
                 studentId: values.studentId,
             },
             {
-                onError: (err: any) => {
+                onError: (err: unknown) => {
                     console.error('Đăng ký thất bại:', err)
                 },
             }

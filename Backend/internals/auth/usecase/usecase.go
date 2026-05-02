@@ -83,11 +83,8 @@ func (u *authUseCase) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return nil, err
 	}
 
-	// Default role is student
-	role := req.Role
-	if role == "" {
-		role = "student"
-	}
+	// Default role is always student for public registration
+	role := "student"
 
 	// Create user
 	user, err := u.repo.CreateUser(ctx, models.CreateUserParams{

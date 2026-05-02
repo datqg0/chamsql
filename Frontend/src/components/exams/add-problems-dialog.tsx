@@ -94,7 +94,7 @@ export function AddProblemsDialog({ examId, currentProblemsCount, onSuccess }: A
                 sortOrder: currentProblemsCount + 2,
             })
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Thêm bài tập thất bại!')
         } finally {
             setIsSubmitting(false)

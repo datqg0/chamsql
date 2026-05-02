@@ -12,6 +12,29 @@ interface EditorProps {
     className?: string
 }
 
+const ToolbarButton = ({
+    isActive,
+    onClick,
+    icon: Icon,
+    label
+}: {
+    isActive?: boolean
+    onClick: () => void
+    icon: React.ElementType
+    label: string
+}) => (
+    <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onClick}
+        className={cn("h-8 w-8 p-0", isActive && "bg-muted text-item-foreground")}
+        title={label}
+    >
+        <Icon className="h-4 w-4" />
+    </Button>
+)
+
 export function Editor({ value, onChange, className }: EditorProps) {
     const editor = useEditor({
         extensions: [
@@ -33,28 +56,7 @@ export function Editor({ value, onChange, className }: EditorProps) {
         return null
     }
 
-    const ToolbarButton = ({
-        isActive,
-        onClick,
-        icon: Icon,
-        label
-    }: {
-        isActive?: boolean
-        onClick: () => void
-        icon: any
-        label: string
-    }) => (
-        <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClick}
-            className={cn("h-8 w-8 p-0", isActive && "bg-muted text-item-foreground")}
-            title={label}
-        >
-            <Icon className="h-4 w-4" />
-        </Button>
-    )
+
 
     return (
         <div className={cn("border rounded-md overflow-hidden bg-background", className)}>

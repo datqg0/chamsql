@@ -35,7 +35,7 @@ export interface TestResult {
     executionMs: number
     isCorrect: boolean
     isHidden: boolean
-    actualOutput?: any
+    actualOutput?: unknown
     errorMessage?: string
 }
 
@@ -82,8 +82,8 @@ export interface Submission {
     totalTests?: number
     passedTests?: number
     errorMessage?: string
-    expectedOutput?: any
-    actualOutput?: any
+    expectedOutput?: unknown
+    actualOutput?: unknown
     testResults?: TestResult[]
     submittedAt: string
     createdAt?: string
@@ -104,7 +104,7 @@ export interface RunQueryRequest {
 export interface RunQueryResponse {
     success: boolean
     columns?: string[]
-    rows?: any[]
+    rows?: unknown[]
     rowCount: number
     executionMs: number
     error?: string

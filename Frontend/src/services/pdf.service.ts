@@ -11,12 +11,9 @@ export interface PDFUploadResponse {
 
 export interface PDFStatusResponse {
     id: number
-    status: 'uploading' | 'parsing' | 'generating' | 'completed' | 'failed'
+    status: string
     file_name: string
-    extraction_result?: {
-        total_problems: number
-        problems: ExtractedProblem[]
-    }
+    extraction_result?: unknown
     error_message?: string
     created_at: string
     updated_at: string
@@ -95,6 +92,20 @@ export const pdfService = {
             }
         )
         return response.data
+    },
+
+    /**
+     * Confirm problem extraction
+     */
+    async confirmProblem(
+        problemId: number,
+        solution: ProblemSolution
+    ): Promise<{ id: number; status: string; message: string }> {
+        const response = await api.post(
+            API_ENDPOINTS.pdf.confirmProblem(problemId),
+            { solution_query: solution.solution_query, db_type: solution.db_type }
+        )
+        return response.data?.data ?? response.data
     },
 
     /**

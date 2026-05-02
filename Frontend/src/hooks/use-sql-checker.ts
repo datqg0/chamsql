@@ -81,9 +81,7 @@ export function useSQLChecker(
             clearTimeout(timerRef.current)
         }
 
-        if (sql && sql.trim() !== '') {
-            setResult(prev => ({ ...prev, isChecking: true }))
-        }
+
 
         timerRef.current = setTimeout(() => {
             performCheck(sql)

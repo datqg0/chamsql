@@ -58,7 +58,7 @@ function PracticePage() {
     const [sqlQuery, setSqlQuery] = useState('')
     const [isRunning, setIsRunning] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [result, setResult] = useState<any>(null)
+    const [result, setResult] = useState<unknown>(null)
     const [activeTab, setActiveTab] = useState<'problem' | 'result'>('problem')
 
     const { isValid, syntaxError } = useSQLChecker(sqlQuery, {
@@ -76,7 +76,7 @@ function PracticePage() {
     const { data: allProblemsData, isLoading: loadingAllProblems } = useQuery({
         queryKey: ['all-problems', difficultyFilter],
         queryFn: async () => {
-            const filters: any = {}
+            const filters: unknown = {}
             if (difficultyFilter !== 'all') {
                 filters.difficulty = difficultyFilter
             }
@@ -119,7 +119,7 @@ function PracticePage() {
             // Parse nested response: response.data contains the actual result
             const actualData = response // Adjust based on your API response wrapper
             setResult({ type: 'run', data: actualData })
-        } catch (error: any) {
+        } catch (error: unknown) {
             setResult({ type: 'error', error: error?.message || 'Lỗi khi chạy truy vấn' })
         } finally {
             setIsRunning(false)
@@ -148,7 +148,7 @@ function PracticePage() {
             } else {
                 setResult({ type: 'submit', success: false, data: data })
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Không thể nộp bài')
             setResult({ type: 'error', error: error?.message })
         } finally {
@@ -164,7 +164,7 @@ function PracticePage() {
                 toast.success('Xóa bài tập thành công!')
                 queryClient.invalidateQueries({ queryKey: ['all-problems'] })
                 queryClient.invalidateQueries({ queryKey: ['topic-problems'] })
-            } catch (error: any) {
+            } catch (error: unknown) {
                 toast.error(error?.message || 'Không thể xóa bài tập')
             }
         }
@@ -183,7 +183,7 @@ function PracticePage() {
         )
     }
 
-    const renderTable = (columns: string[], rows: any[][]) => {
+    const renderTable = (columns: string[], rows: unknown[][]) => {
         if (!columns || !rows) return null
         return (
             <div className="overflow-x-auto rounded-md border">
@@ -295,7 +295,7 @@ function PracticePage() {
                                 Chi tiết Test Cases
                             </h4>
                             <div className="grid grid-cols-1 gap-2">
-                                {testResults.map((tr: any, idx: number) => (
+                                {testResults.map((tr: unknown, idx: number) => (
                                     <div key={idx} className="border rounded-md p-3 bg-muted/5">
                                         <div className="flex items-center justify-between mb-1">
                                             <div className="flex items-center gap-2">

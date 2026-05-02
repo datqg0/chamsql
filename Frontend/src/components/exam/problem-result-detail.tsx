@@ -1,9 +1,10 @@
-import React, { useState } from 'react'
 import { ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, XCircle } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import React, { useState } from 'react'
+import toast from 'react-hot-toast'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import toast from 'react-hot-toast'
+import { Card, CardContent } from '@/components/ui/card'
 import type { ProblemSubmissionResult } from '@/types/exam-submission.types'
 
 interface ProblemResultDetailProps {

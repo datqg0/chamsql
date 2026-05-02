@@ -2,6 +2,7 @@ export const API_ENDPOINTS = {
     auth: {
         login: '/auth/login',
         register: '/auth/register',
+        logout: '/auth/logout',
     },
     topics: {
         list: '/topics',
@@ -27,9 +28,6 @@ export const API_ENDPOINTS = {
         addProblem: (id: number) => `/exams/${id}/problems`,
         addParticipants: (id: number) => `/exams/${id}/participants`,
         listParticipants: (id: number) => `/exams/${id}/participants`,
-        start: (id: number) => `/exams/${id}/start`,
-        submit: (id: number) => `/exams/${id}/submit`,
-        finish: (id: number) => `/exams/${id}/finish`,
         myExams: '/my-exams',
     },
     admin: {
@@ -37,7 +35,7 @@ export const API_ENDPOINTS = {
         users: '/admin/users',
         importUsers: '/admin/users/import',
         updateRole: (id: number) => `/admin/users/${id}/role`,
-        toggleActive: (id: number) => `/admin/users/${id}/toggle-active`,
+        toggleActive: (id: number) => `/admin/users/${id}/active`,
         sandboxStatus: '/admin/sandbox/status',
         sandboxTest: '/admin/sandbox/test',
     },
@@ -46,6 +44,7 @@ export const API_ENDPOINTS = {
         status: (id: number) => `/lecturer/pdf/${id}/status`,
         problems: (id: number) => `/lecturer/pdf/${id}/problems`,
         updateSolution: (id: number) => `/lecturer/pdf/problems/${id}/solution`,
+        confirmProblem: (id: number) => `/lecturer/pdf/problems/${id}/confirm`,
     },
     lecturer: {
         ungradedSubmissions: (examId: number) => `/lecturer/exams/${examId}/ungraded`,

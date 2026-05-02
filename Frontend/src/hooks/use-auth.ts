@@ -31,7 +31,7 @@ export function useLogin() {
                 toast.error(data.message || 'Đăng nhập thất bại!')
             }
         },
-        onError: (error: any) => {
+        onError: (error: unknown) => {
             toast.error(error?.response?.data?.message || error?.message || 'Đăng nhập thất bại. Vui lòng thử lại!')
         },
     })
@@ -63,7 +63,7 @@ export function useRegister() {
                 toast.error(data.message || 'Đăng ký thất bại!')
             }
         },
-        onError: (error: any) => {
+        onError: (error: unknown) => {
             toast.error(error?.response?.data?.message || error?.message || 'Đăng ký thất bại. Vui lòng thử lại!')
         },
     })

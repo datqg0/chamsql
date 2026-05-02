@@ -46,7 +46,7 @@ function LoginPage() {
             let redirectPath = '/dashboard'
             if (userRole === 'student') redirectPath = '/practice'
             else if (userRole === 'lecturer') redirectPath = '/grading'
-            navigate({ to: redirectPath as any })
+            navigate({ to: redirectPath as '/' | '/dashboard' | '/practice' | '/grading' })
         }
     }, [isAuthenticated, userRole, navigate])
 
@@ -67,11 +67,11 @@ function LoginPage() {
 
                         // Delay để đảm bảo state đã persist vào localStorage
                         setTimeout(() => {
-                            navigate({ to: redirectPath as any })
+                            navigate({ to: redirectPath as '/' | '/dashboard' | '/practice' | '/grading' })
                         }, 300)
                     }
                 },
-                onError: (err: any) => {
+                onError: (err: unknown) => {
                     console.error('Đăng nhập thất bại:', err)
                 },
             }

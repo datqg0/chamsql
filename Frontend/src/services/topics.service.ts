@@ -20,12 +20,12 @@ export const topicsService = {
     },
 
     async getBySlug(slug: string): Promise<Topic> {
-        const { data } = await api.get<any>(API_ENDPOINTS.topics.bySlug(slug))
+        const { data } = await api.get<unknown>(API_ENDPOINTS.topics.bySlug(slug))
         return data.data || data
     },
 
     async create(topic: Omit<Topic, 'id'>): Promise<Topic> {
-        const { data } = await api.post<any>(API_ENDPOINTS.topics.create, topic)
+        const { data } = await api.post<unknown>(API_ENDPOINTS.topics.create, topic)
         return data.data || data
     },
 }

@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 export const api = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1',
@@ -26,10 +26,15 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
     (response) => {
+        // Auto-unwrap { code, message, data } format
+        const d = response.data
+        if (d && typeof d === 'object' && 'code' in d && 'data' in d) {
+            response.data = d.data
+        }
         return response
     },
     async (error: AxiosError) => {
-        const originalRequest = error.config as any
+        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
         // Prevent infinite loop if /auth/refresh itself returns 401
         if (originalRequest.url === '/auth/refresh') {

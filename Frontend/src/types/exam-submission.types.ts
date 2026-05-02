@@ -64,9 +64,7 @@ export interface ExamProblemDetail {
   submissionStatus?: "answered" | "unanswered" | "skipped";
 }
 
-export interface ExamFinishRequest {
-  // no body needed
-}
+export type ExamFinishRequest = Record<string, never>
 
 export interface ExamFinishResponse {
   participantID: number;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -31,6 +32,17 @@ type studentExamUseCase struct {
 	queries  *models.Queries
 	executor CodeExecutor
 	cache    redis.IRedis
+}
+
+func numericToFloat64(n pgtype.Numeric) float64 {
+	if !n.Valid || n.Int == nil {
+		return 0
+	}
+	f, _ := new(big.Float).SetInt(n.Int).Float64()
+	if n.Exp != 0 {
+		f *= math.Pow(10, float64(n.Exp))
+	}
+	return f
 }
 
 func NewStudentExamUseCase(database *db.Database, cache redis.IRedis, queryRunner runner.Runner) IStudentExamUseCase {
@@ -250,12 +262,7 @@ func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProble
 	var attemptNumber int32 = 1
 	for i, s := range submissionRows {
 		status := s.Status
-		score := 0.0
-		// Score is pgtype.Numeric, convert to float64
-		if s.Score.Valid && s.Score.Int != nil {
-			// Use the Int field which is *big.Int
-			score = float64(s.Score.Int.Int64())
-		}
+		score := numericToFloat64(s.Score)
 		isCorrect := false
 		if s.IsCorrect != nil {
 			isCorrect = *s.IsCorrect
@@ -284,8 +291,6 @@ func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProble
 
 	// 5. Build response
 	initScript := problem.InitScript
-	solutionQuery := problem.SolutionQuery
-
 	return &dto.GetProblemResponse{
 		ExamProblemID: problem.ID,
 		ProblemID:     problem.ProblemID,
@@ -295,7 +300,6 @@ func (su *studentExamUseCase) GetProblem(ctx context.Context, examID, examProble
 		Points:        problem.Points,
 		SortOrder:     problem.SortOrder,
 		InitScript:    &initScript,
-		SolutionQuery: &solutionQuery,
 		AttemptNumber: attemptNumber,
 		Submissions:   submissions,
 	}, nil
@@ -416,10 +420,7 @@ func (su *studentExamUseCase) SubmitCode(ctx context.Context, examID, examProble
 	}
 
 	// 8. Build response
-	resultScore := 0.0
-	if updatedSubmission.Score.Valid && updatedSubmission.Score.Int != nil {
-		resultScore = float64(updatedSubmission.Score.Int.Int64())
-	}
+	resultScore := numericToFloat64(updatedSubmission.Score)
 
 	errorMsg := ""
 	if updatedSubmission.ErrorMessage != nil {

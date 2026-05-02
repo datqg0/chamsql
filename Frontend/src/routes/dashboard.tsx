@@ -12,7 +12,7 @@ function DashboardPage() {
 
     // Wait for Zustand to hydrate
     useEffect(() => {
-        setIsHydrated(true)
+        setTimeout(() => setIsHydrated(true), 0)
     }, [])
 
     // Redirect to login if not authenticated (after hydration)

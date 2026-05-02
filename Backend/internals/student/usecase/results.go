@@ -291,7 +291,7 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 	offset := (req.Page - 1) * req.Limit
 
 	rows, err := su.db.GetPool().Query(ctx,
-		`SELECT ep.user_id, u.full_name,
+		`SELECT ep.user_id, u.full_name, u.student_code,
             COALESCE(ep.total_score, 0),
             ROW_NUMBER() OVER (ORDER BY ep.total_score DESC NULLS LAST) as rank,
             ROUND(100.0 * ROW_NUMBER() OVER (ORDER BY ep.total_score DESC NULLS LAST) /
@@ -312,10 +312,11 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 	for rows.Next() {
 		var userID int64
 		var fullName string
+		var studentCode string
 		var totalScore interface{}
 		var rank, percentile int32
 
-		if err := rows.Scan(&userID, &fullName, &totalScore, &rank, &percentile); err != nil {
+		if err := rows.Scan(&userID, &fullName, &studentCode, &totalScore, &rank, &percentile); err != nil {
 			continue
 		}
 
@@ -327,6 +328,7 @@ func (su *studentResultsUseCase) GetClassRanking(ctx context.Context, examID int
 		rankings = append(rankings, dto.StudentRanking{
 			Rank:        rank,
 			StudentID:   userID,
+			StudentCode: studentCode,
 			StudentName: fullName,
 			Score:       score,
 			Percentile:  float64(percentile),

@@ -10,7 +10,20 @@ export interface SubmissionFilters {
     pageSize?: number
 }
 
-const mapExamResultToSubmission = (item: any): SubmissionListResponse['data'][number] => ({
+interface ExamResultItem {
+    exam_id?: number;
+    examId?: number;
+    student_id?: number;
+    studentId?: number;
+    title?: string;
+    status?: string;
+    total_score?: number;
+    totalScore?: number;
+    submitted_at?: string;
+    submittedAt?: string;
+}
+
+const mapExamResultToSubmission = (item: ExamResultItem): SubmissionListResponse['data'][number] => ({
     id: Number(item.exam_id ?? item.examId ?? 0),
     problemId: 0,
     userId: Number(item.student_id ?? item.studentId ?? 0),
@@ -18,7 +31,7 @@ const mapExamResultToSubmission = (item: any): SubmissionListResponse['data'][nu
     examTitle: item.title ?? '',
     code: '',
     databaseType: 'postgresql',
-    status: (item.status ?? 'accepted') as any,
+    status: (item.status || 'accepted') as SubmissionListResponse['data'][number]['status'],
     isCorrect: Number(item.total_score ?? item.totalScore ?? 0) > 0,
     score: Number(item.total_score ?? item.totalScore ?? 0),
     submittedAt: item.submitted_at ?? item.submittedAt ?? '',
@@ -28,7 +41,7 @@ const mapExamResultToSubmission = (item: any): SubmissionListResponse['data'][nu
 export const submissionsService = {
     async list(filters?: SubmissionFilters): Promise<SubmissionListResponse> {
         // Online exam history should come from student results endpoint.
-        const { data } = await api.get<any>(
+        const { data } = await api.get<unknown>(
             API_ENDPOINTS.student.results,
             {
                 params: {

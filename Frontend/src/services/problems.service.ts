@@ -36,17 +36,17 @@ export const problemsService = {
     },
 
     async getBySlug(slug: string): Promise<Problem> {
-        const { data } = await api.get<any>(API_ENDPOINTS.problems.bySlug(slug))
+        const { data } = await api.get<unknown>(API_ENDPOINTS.problems.bySlug(slug))
         return data.data || data
     },
 
     async create(problem: Omit<Problem, 'id'>): Promise<Problem> {
-        const { data } = await api.post<any>(API_ENDPOINTS.problems.create, problem)
+        const { data } = await api.post<unknown>(API_ENDPOINTS.problems.create, problem)
         return data.data || data
     },
 
     async run(problemId: number, request: RunQueryRequest): Promise<RunQueryResponse> {
-        const { data } = await api.post<any>(
+        const { data } = await api.post<unknown>(
             API_ENDPOINTS.problems.run(problemId),
             request
         )
@@ -54,14 +54,14 @@ export const problemsService = {
     },
 
     async submit(problemId: number, request: SubmitSolutionRequest): Promise<SubmitSolutionResponse> {
-        const { data } = await api.post<any>(
+        const { data } = await api.post<unknown>(
             API_ENDPOINTS.problems.submit(problemId),
             request
         )
         return data.data || data
     },
     async update(id: number, problem: Partial<Problem>): Promise<Problem> {
-        const { data } = await api.put<any>(API_ENDPOINTS.problems.update(id), problem)
+        const { data } = await api.put<unknown>(API_ENDPOINTS.problems.update(id), problem)
         return data.data || data
     },
     async delete(id: number): Promise<void> {

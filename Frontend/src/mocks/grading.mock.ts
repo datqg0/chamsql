@@ -15,8 +15,8 @@ export interface Submission {
     maxScore: number
     executionTime?: string
     feedback?: string
-    expectedOutput?: any[]
-    actualOutput?: any[]
+    expectedOutput?: unknown[]
+    actualOutput?: unknown[]
     isCorrect?: boolean
     totalTests?: number
     passedTests?: number
@@ -349,8 +349,8 @@ export function mockAutoGrade(submissionId: number): Promise<{
                 // - If query is slightly off -> returns PARTIAL/WRONG output
 
                 // Mock execution result
-                let actualOutput: any[] = [];
-                let expectedOutput: any[] = [];
+                let actualOutput: unknown[] = [];
+                let expectedOutput: unknown[] = [];
                 const executionTime = (Math.random() * 0.1).toFixed(3) + 's';
 
                 // Hardcoded expectation logic for demonstration based on Exercise ID

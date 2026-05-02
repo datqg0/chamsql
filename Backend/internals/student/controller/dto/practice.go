@@ -46,7 +46,6 @@ type GetPublicProblemResponse struct {
 	TopicName          string               `json:"topic_name,omitempty"`
 	TopicSlug          string               `json:"topic_slug,omitempty"`
 	InitScript         *string              `json:"init_script,omitempty"`
-	SolutionQuery      *string              `json:"solution_query,omitempty"`
 	SampleOutput       *string              `json:"sample_output,omitempty"`
 	Hints              *string              `json:"hints,omitempty"`
 	OrderMatters       *bool                `json:"order_matters,omitempty"`

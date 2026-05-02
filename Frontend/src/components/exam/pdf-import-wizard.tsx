@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
     Select,
     SelectContent,
@@ -20,8 +19,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { pdfService, type ExtractedProblem, type ProblemSolution } from '@/services/pdf.service'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { pdfService, type ExtractedProblem, type ProblemSolution } from '@/services/pdf.service'
 
 type WizardStep = 'upload' | 'review' | 'solutions' | 'complete'
 
@@ -38,7 +38,6 @@ export function PDFImportWizard({ open, onOpenChange, onSuccess }: PDFImportWiza
     const [file, setFile] = useState<File | null>(null)
     const [isUploading, setIsUploading] = useState(false)
     const [isDragOver, setIsDragOver] = useState(false)
-    const [_uploadId, setUploadId] = useState<number | null>(null)
     const [problems, setProblems] = useState<ExtractedProblem[]>([])
     const [currentProblemIndex, setCurrentProblemIndex] = useState(0)
     const [solutions, setSolutions] = useState<Record<number, ProblemSolution>>({})
@@ -85,12 +84,11 @@ export function PDFImportWizard({ open, onOpenChange, onSuccess }: PDFImportWiza
         setIsUploading(true)
         try {
             const result = await pdfService.uploadPDF(file)
-            setUploadId(result.id)
             toast.success('Upload thành công! Đang trích xuất câu hỏi...')
 
             // Poll for extraction completion
             await pollForExtraction(result.id)
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Upload thất bại')
         } finally {
             setIsUploading(false)
@@ -148,7 +146,7 @@ export function PDFImportWizard({ open, onOpenChange, onSuccess }: PDFImportWiza
         try {
             await pdfService.updateSolution(problemId, solution)
             toast.success('Đã lưu đáp án!')
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Lưu đáp án thất bại')
         }
     }
@@ -167,7 +165,7 @@ export function PDFImportWizard({ open, onOpenChange, onSuccess }: PDFImportWiza
             setStep('complete')
             toast.success('Tất cả câu hỏi đã được lưu!')
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Lưu thất bại')
         }
     }
@@ -185,7 +183,6 @@ export function PDFImportWizard({ open, onOpenChange, onSuccess }: PDFImportWiza
     const reset = () => {
         setStep('upload')
         setFile(null)
-        setUploadId(null)
         setProblems([])
         setSolutions({})
         setCurrentProblemIndex(0)

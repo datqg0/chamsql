@@ -4,40 +4,59 @@ import type {
     AddExamProblemRequest,
     AddParticipantsRequest,
     ExamParticipant,
-    SubmitExamAnswerRequest,
     MyExam,
 } from '@/types/exam.types'
 
 import { api } from './api/client'
 import { API_ENDPOINTS } from './api/endpoints'
 
+interface BaseResponse<T> {
+    code?: number;
+    message?: string;
+    data?: T;
+}
+
+interface ListExamsData {
+    exams: Exam[];
+}
+
+interface PdfUploadResponse {
+    id?: number;
+    message?: string;
+}
+
 export const examsService = {
     async list(): Promise<Exam[]> {
-        const { data } = await api.get<any>(API_ENDPOINTS.exams.list)
-        // Handle nested response format if exists
-        if (data && data.data && Array.isArray(data.data.exams)) {
-            return data.data.exams
-        }
-        if (data && Array.isArray(data.data)) {
-            return data.data
-        }
+        const { data } = await api.get<BaseResponse<Exam[] | ListExamsData> | Exam[]>(API_ENDPOINTS.exams.list)
+        
         if (Array.isArray(data)) {
             return data
+        }
+        if (data && data.data) {
+            if (Array.isArray(data.data)) {
+                return data.data
+            }
+            if ('exams' in data.data && Array.isArray(data.data.exams)) {
+                return data.data.exams
+            }
         }
         return []
     },
 
     async create(exam: CreateExamRequest): Promise<Exam> {
-        const { data } = await api.post<Exam>(API_ENDPOINTS.exams.create, exam)
-        return data
+        const { data } = await api.post<BaseResponse<Exam> | Exam>(API_ENDPOINTS.exams.create, exam)
+        if (data && 'data' in data && data.data) {
+            return data.data
+        }
+        return data as Exam
     },
 
     async getById(examId: number): Promise<Exam> {
-        const { data } = await api.get<any>(API_ENDPOINTS.exams.byId(examId))
-        if (data && data.data) {
+        const { data } = await api.get<BaseResponse<Exam> | Exam>(API_ENDPOINTS.exams.byId(examId))
+        if (data && 'data' in data && data.data) {
             return data.data
         }
-        return data
+        return data as Exam
     },
 
     async addProblem(examId: number, request: AddExamProblemRequest): Promise<void> {
@@ -49,45 +68,24 @@ export const examsService = {
     },
 
     async listParticipants(examId: number): Promise<ExamParticipant[]> {
-        const { data } = await api.get<any>(API_ENDPOINTS.exams.listParticipants(examId))
-        if (data && Array.isArray(data.data)) {
-            return data.data
-        }
+        const { data } = await api.get<BaseResponse<ExamParticipant[]> | ExamParticipant[]>(API_ENDPOINTS.exams.listParticipants(examId))
         if (Array.isArray(data)) {
             return data
+        }
+        if (data && data.data && Array.isArray(data.data)) {
+            return data.data
         }
         return []
     },
 
-    async start(examId: number): Promise<{ success: boolean; message?: string }> {
-        const { data } = await api.post<{ success: boolean; message?: string }>(
-            API_ENDPOINTS.exams.start(examId)
-        )
-        return data
-    },
 
-    async submitAnswer(examId: number, request: SubmitExamAnswerRequest): Promise<{ success: boolean; status: string }> {
-        const { data } = await api.post<{ success: boolean; status: string }>(
-            API_ENDPOINTS.exams.submit(examId),
-            request
-        )
-        return data
-    },
-
-    async finish(examId: number): Promise<{ success: boolean; score?: number }> {
-        const { data } = await api.post<{ success: boolean; score?: number }>(
-            API_ENDPOINTS.exams.finish(examId)
-        )
-        return data
-    },
 
     async getMyExams(): Promise<MyExam[]> {
-        const { data } = await api.get(API_ENDPOINTS.exams.myExams)
-        // Handle both direct array and nested data structure
+        const { data } = await api.get<BaseResponse<MyExam[]> | MyExam[]>(API_ENDPOINTS.exams.myExams)
         if (Array.isArray(data)) {
             return data
         }
-        if (data && Array.isArray(data.data)) {
+        if (data && data.data && Array.isArray(data.data)) {
             return data.data
         }
         return []
@@ -98,7 +96,7 @@ export const examsService = {
         const formData = new FormData()
         formData.append('file', file)
 
-        const { data } = await api.post<any>(
+        const { data } = await api.post<BaseResponse<PdfUploadResponse> | PdfUploadResponse>(
             API_ENDPOINTS.pdf.upload,
             formData,
             {
@@ -108,7 +106,8 @@ export const examsService = {
             }
         )
 
-        const payload = data?.data ?? data
+        const payload = (data && 'data' in data && data.data) ? data.data : (data as PdfUploadResponse)
+        
         return {
             success: Boolean(payload?.id),
             message: payload?.message,

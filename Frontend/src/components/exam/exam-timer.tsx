@@ -1,6 +1,7 @@
-import React from "react";
-import { useExamTimer } from "@/hooks/useExamTimer";
 import { Clock, AlertCircle } from "lucide-react";
+import React from "react";
+
+import { useExamTimer } from "@/hooks/useExamTimer";
 
 interface ExamTimerProps {
   endTimeMs: number | null;

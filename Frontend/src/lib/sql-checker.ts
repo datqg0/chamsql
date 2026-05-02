@@ -43,7 +43,7 @@ export function checkSQLSyntax(
             isValid: true,
             ast,
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         const errorMessage = error?.message || 'Lỗi cú pháp không xác định'
 
         const lineMatch = errorMessage.match(/line\s+(\d+)/i)

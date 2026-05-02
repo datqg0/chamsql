@@ -62,7 +62,6 @@ type GetProblemResponse struct {
 	ScoringMode     *string             `json:"scoring_mode"`
 	ReferenceAnswer *string             `json:"reference_answer,omitempty"`
 	InitScript      *string             `json:"init_script,omitempty"`
-	SolutionQuery   *string             `json:"solution_query,omitempty"`
 	AttemptNumber   int32               `json:"attempt_number"`
 	Submissions     []StudentSubmission `json:"submissions"`
 }

@@ -103,7 +103,7 @@ export function ExamImportDialog({ onSuccess, trigger }: ExamImportDialogProps) 
             } else {
                 toast.error(result.message || 'Có lỗi xảy ra khi import')
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Có lỗi xảy ra khi upload file')
         } finally {
             setIsUploading(false)

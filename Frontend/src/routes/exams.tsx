@@ -13,10 +13,10 @@ import {
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { PDFImportWizard } from '@/components/exam/pdf-import-wizard'
 import { AddParticipantsDialog } from '@/components/exams/add-participants-dialog'
 import { AddProblemsDialog } from '@/components/exams/add-problems-dialog'
 import { CreateExamDialog } from '@/components/exams/create-exam-dialog'
-import { PDFImportWizard } from '@/components/exam/pdf-import-wizard'
 import { MainLayout } from '@/components/layouts/main-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,13 +30,6 @@ function ExamsPage() {
     const queryClient = useQueryClient()
     const { isOperator, userRole } = useAuthStore()
     const isLecturer = isOperator() || userRole === 'lecturer'
-
-    // RESTRICT: Only lecturers can access
-    if (!isLecturer) {
-        toast.error('Bạn không có quyền truy cập trang này!', { id: 'exams-access-denied' })
-        navigate({ to: '/practice' as any })
-        return null
-    }
 
     const [selectedExam, setSelectedExam] = useState<Exam | null>(null)
     const [showPDFImport, setShowPDFImport] = useState(false)
@@ -58,6 +51,13 @@ function ExamsPage() {
         queryKey: ['exams'],
         queryFn: () => examsService.list(),
     })
+
+    // RESTRICT: Only lecturers can access
+    if (!isLecturer) {
+        toast.error('Bạn không có quyền truy cập trang này!', { id: 'exams-access-denied' })
+        navigate({ to: '/practice' })
+        return null
+    }
 
     const handleBackToList = () => {
         setSelectedExam(null)

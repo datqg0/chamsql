@@ -16,31 +16,31 @@ export interface UserListResponse {
 
 export const adminService = {
     async getStats(): Promise<AdminStats> {
-        const { data } = await api.get<AdminStats>(API_ENDPOINTS.admin.stats)
-        return data
+        const { data } = await api.get<unknown>(API_ENDPOINTS.admin.stats)
+        return data?.data ?? data
     },
 
     async getUsers(page = 1, pageSize = 20): Promise<UserListResponse> {
-        const { data } = await api.get<UserListResponse>(
+        const { data } = await api.get<unknown>(
             API_ENDPOINTS.admin.users,
             { params: { page, pageSize } }
         )
-        return data
+        return data?.data ?? data
     },
 
     async importUsers(request: ImportUsersRequest): Promise<{ success: boolean; message: string }> {
-        const { data } = await api.post<{ success: boolean; message: string }>(
+        const { data } = await api.post<unknown>(
             API_ENDPOINTS.admin.importUsers,
             request
         )
-        return data
+        return data?.data ?? data
     },
 
     async updateUserRole(userId: number, role: string): Promise<{ success: boolean; message: string }> {
-        const { data } = await api.put<{ success: boolean; message: string }>(
+        const { data } = await api.put<unknown>(
             API_ENDPOINTS.admin.updateRole(userId),
             { role }
         )
-        return data
+        return data?.data ?? data
     },
 }

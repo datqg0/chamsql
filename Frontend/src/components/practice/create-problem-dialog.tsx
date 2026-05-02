@@ -1,10 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Trash2, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { Trash2, AlertCircle } from 'lucide-react'
 import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
@@ -42,9 +42,9 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { Problem } from '@/types/exam.types'
 import { problemsService } from '@/services/problems.service'
 import { topicsService } from '@/services/topics.service'
+import type { Problem } from '@/types/exam.types'
 
 const testCaseSchema = z.object({
     name: z.string().min(1, 'Tên test case là bắt buộc'),
@@ -87,9 +87,9 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
         queryKey: ['topics'],
         queryFn: () => topicsService.list(),
     })
-    const topics = Array.isArray(topicsData) ? topicsData : []
+    const topics = useMemo(() => Array.isArray(topicsData) ? topicsData : [], [topicsData])
 
-    const { data: fullProblem, isLoading: _isLoadingFullProblem } = useQuery({
+    const { data: fullProblem } = useQuery({
         queryKey: ['problem', problem?.slug],
         queryFn: () => problemsService.getBySlug(problem!.slug),
         enabled: isEdit && open,
@@ -101,7 +101,7 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
             title: problem?.title || '',
             slug: problem?.slug || '',
             description: problem?.description || '',
-            difficulty: (problem?.difficulty as any) || 'easy',
+            difficulty: (problem?.difficulty as 'easy' | 'medium' | 'hard') || 'easy',
             topicId: problem?.topicId,
             initScript: problem?.initScript || '',
             solutionQuery: problem?.solutionQuery || '',
@@ -119,7 +119,7 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
                 title: fullProblem.title,
                 slug: fullProblem.slug,
                 description: fullProblem.description,
-                difficulty: fullProblem.difficulty as any,
+                difficulty: fullProblem.difficulty as 'easy' | 'medium' | 'hard',
                 topicId: fullProblem.topicId,
                 initScript: fullProblem.initScript || '',
                 solutionQuery: fullProblem.solutionQuery || '',
@@ -154,16 +154,16 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
         setIsSubmitting(true)
         try {
             if (isEdit && problem) {
-                await problemsService.update(problem.id, values as any)
+                await problemsService.update(problem.id, values as unknown as Partial<Problem>)
                 toast.success('Cập nhật bài tập thành công!')
             } else {
-                await problemsService.create(values as any)
+                await problemsService.create(values as unknown as Omit<Problem, 'id'>)
                 toast.success('Tạo bài tập thành công!')
             }
             setOpen(false)
             if (!isEdit) form.reset()
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || (isEdit ? 'Cập nhật bài tập thất bại!' : 'Tạo bài tập thất bại!'))
         } finally {
             setIsSubmitting(false)
@@ -180,9 +180,9 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
             }
         })
         return () => subscription.unsubscribe()
-    }, [form, topics])
+    }, [form, topics, handleTitleChange])
 
-    const handleTitleChange = (title: string) => {
+    const handleTitleChange = useCallback((title: string) => {
         const selectedTopicId = form.getValues('topicId')
         const selectedTopic = topics.find(t => t.id === selectedTopicId)
 
@@ -199,7 +199,7 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
             : titleSlug
 
         form.setValue('slug', slug)
-    }
+    }, [form, topics])
 
     const databases = ['postgresql', 'mysql', 'sqlite']
 

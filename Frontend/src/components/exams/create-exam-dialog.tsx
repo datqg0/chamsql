@@ -94,7 +94,7 @@ export function CreateExamDialog({ onSuccess }: CreateExamDialogProps) {
             setOpen(false)
             form.reset()
             onSuccess?.()
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast.error(error?.message || 'Tạo kỳ thi thất bại!')
         } finally {
             setIsSubmitting(false)

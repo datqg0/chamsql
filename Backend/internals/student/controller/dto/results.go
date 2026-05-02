@@ -59,6 +59,7 @@ type ClassRankingResponse struct {
 type StudentRanking struct {
 	Rank        int32   `json:"rank"`
 	StudentID   int64   `json:"student_id"`
+	StudentCode string  `json:"student_code"`
 	StudentName string  `json:"student_name"`
 	Score       float64 `json:"score"`
 	Percentile  float64 `json:"percentile"`

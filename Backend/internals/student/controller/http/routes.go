@@ -34,8 +34,8 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, quer
 
 		// PRACTICE ENDPOINTS
 		student.GET("/practice/problems", handler.ListPublicProblems)
-		student.GET("/practice/problems/:id", handler.GetPublicProblem)
 		student.GET("/practice/problems/slug/:slug", handler.GetPublicProblemBySlug)
+		student.GET("/practice/problems/:id", handler.GetPublicProblem)
 		student.POST("/practice/problems/:id/submit", handler.PracticeSubmitCode)
 		student.GET("/practice/problems/:id/submissions", handler.ListPracticeSubmissions)
 

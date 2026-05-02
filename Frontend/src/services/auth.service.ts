@@ -9,7 +9,7 @@ import { API_ENDPOINTS } from './api/endpoints'
 
 export const authService = {
     async login(dto: LoginDto): Promise<AuthResponse> {
-        const { data } = await api.post<any>(
+        const { data } = await api.post<unknown>(
             API_ENDPOINTS.auth.login,
             dto
         )
@@ -17,7 +17,7 @@ export const authService = {
     },
 
     async register(dto: RegisterDto): Promise<AuthResponse> {
-        const { data } = await api.post<any>(
+        const { data } = await api.post<unknown>(
             API_ENDPOINTS.auth.register,
             dto
         )
@@ -25,8 +25,7 @@ export const authService = {
     },
 
     async logout(): Promise<void> {
-        // API không có endpoint logout, chỉ clear token ở client
-        return Promise.resolve()
+        await api.post(API_ENDPOINTS.auth.logout)
     },
 }
 

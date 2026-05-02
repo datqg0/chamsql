@@ -1,12 +1,13 @@
-import React from "react";
-import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Circle } from "lucide-react";
+import React from "react";
+
+import { Badge } from "@/components/ui/badge";
 import * as types from "@/types/exam-submission.types";
 
 interface ExamNavigationProps {
   problems: types.ExamProblemDetail[];
   currentProblemIndex: number;
-  solvedProblems: Record<number, any>;
+  solvedProblems: Record<number, boolean>;
   onSelectProblem: (index: number) => void;
 }
 
