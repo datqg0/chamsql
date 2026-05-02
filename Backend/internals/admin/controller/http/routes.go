@@ -36,8 +36,9 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		// USER MANAGEMENT ENDPOINTS
 		// =============================================
 		admin.GET("/users", handler.ListUsers)
-		admin.POST("/users/import", handler.ImportUsers)
+		admin.POST("/users/batch-import", handler.ImportUsers)
 		admin.PUT("/users/:id", handler.UpdateUser)
+		admin.DELETE("/users/:id", handler.DeleteUser)
 		admin.PUT("/users/:id/role", handler.UpdateUserRole)
 		admin.PUT("/users/:id/active", handler.ToggleUserActive)
 

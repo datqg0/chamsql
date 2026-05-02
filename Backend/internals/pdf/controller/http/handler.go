@@ -23,13 +23,15 @@ import (
 type PDFHandler struct {
 	uploadManager usecase.IUploadManager
 	storage       miniopkg.IUploadService
+	appCtx        context.Context
 }
 
 // NewPDFHandler creates a new PDF handler
-func NewPDFHandler(uploadManager usecase.IUploadManager, storage miniopkg.IUploadService) *PDFHandler {
+func NewPDFHandler(uploadManager usecase.IUploadManager, storage miniopkg.IUploadService, appCtx context.Context) *PDFHandler {
 	return &PDFHandler{
 		uploadManager: uploadManager,
 		storage:       storage,
+		appCtx:        appCtx,
 	}
 }
 
@@ -103,7 +105,7 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 
 	// Chạy extraction + AI generation trong goroutine riêng.
 	go func(uploadID int64, localPath string) {
-		bgCtx := context.Background()
+		bgCtx := h.appCtx
 
 		if err := h.uploadManager.ProcessExtraction(bgCtx, uploadID); err != nil {
 			fmt.Printf("PDF extraction failed for upload %d: %v\n", uploadID, err)

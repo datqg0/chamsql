@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"backend/db"
 	"backend/internals/pdf/domain"
@@ -19,6 +22,7 @@ type IPDFRepository interface {
 	UpdatePDFUploadStatus(ctx context.Context, id int64, status string) (*domain.PDFUpload, error)
 	UpdatePDFUploadWithExtraction(ctx context.Context, id int64, status string, extractionResult []byte) (*domain.PDFUpload, error)
 	UpdatePDFUploadError(ctx context.Context, id int64, errorMessage string) (*domain.PDFUpload, error)
+	ResetStuckPDFUploads(ctx context.Context, timeout time.Duration) error
 
 	// Problem Review Queue operations
 	CreateProblemReviewQueue(ctx context.Context, pdfUploadID int64, problemNumber int, problemDraft []byte) (*domain.ProblemReviewQueue, error)
@@ -153,6 +157,14 @@ func (r *pdfRepository) UpdatePDFUploadError(ctx context.Context, id int64, erro
 		return nil, err
 	}
 	return mapPdfUpload(res), nil
+}
+
+func (r *pdfRepository) ResetStuckPDFUploads(ctx context.Context, timeout time.Duration) error {
+	cutoff := time.Now().Add(-timeout)
+	return r.queries.ResetStuckPDFUploads(ctx, pgtype.Timestamptz{
+		Time:  cutoff,
+		Valid: true,
+	})
 }
 
 func (r *pdfRepository) CreateProblemReviewQueue(ctx context.Context, pdfUploadID int64, problemNumber int, problemDraft []byte) (*domain.ProblemReviewQueue, error) {

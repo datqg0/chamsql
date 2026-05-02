@@ -29,6 +29,7 @@ type IAdminUseCase interface {
 	UpdateUser(ctx context.Context, userID int64, req *dto.UpdateUserRequest) error
 	UpdateUserRole(ctx context.Context, userID int64, role string) error
 	ToggleUserActive(ctx context.Context, userID int64, isActive bool) error
+	DeleteUser(ctx context.Context, userID int64) error
 
 	// Dashboard & Analytics
 	GetDashboard(ctx context.Context) (*dto.DashboardResponse, error)
@@ -251,6 +252,12 @@ func (u *adminUseCase) ToggleUserActive(ctx context.Context, userID int64, isAct
 		return u.queries.DeactivateUser(ctx, userID)
 	}
 	return nil
+}
+
+func (u *adminUseCase) DeleteUser(ctx context.Context, userID int64) error {
+	// For now, we use DeactivateUser as a soft delete
+	// Since ListUsers and other queries filter by is_active = TRUE
+	return u.queries.DeactivateUser(ctx, userID)
 }
 
 // =============================================

@@ -1,6 +1,7 @@
 package di
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -44,8 +45,13 @@ type Container struct {
 }
 
 // NewContainer creates a new DI container with all dependencies registered
-func NewContainer() (*Container, error) {
+func NewContainer(ctx context.Context) (*Container, error) {
 	c := dig.New()
+
+	// Register the application context
+	if err := c.Provide(func() context.Context { return ctx }); err != nil {
+		return nil, fmt.Errorf("failed to provide context: %w", err)
+	}
 
 	// Register all providers
 	providers := []interface{}{
@@ -89,6 +95,7 @@ func NewContainer() (*Container, error) {
 		provideExamOutboxRepository,
 		provideExamTimerUseCase,
 		provideOutboxRelayTask,
+		providePDFRecoveryTask,
 		provideCronjobScheduler,
 
 		// Chatbot (Phase 4 Upgrade)
@@ -312,8 +319,8 @@ func providePDFUploadManager(
 	)
 }
 
-func providePDFHandler(uploadManager pdfUsecase.IUploadManager, storage miniopkg.IUploadService) *pdfHttp.PDFHandler {
-	return pdfHttp.NewPDFHandler(uploadManager, storage)
+func providePDFHandler(uploadManager pdfUsecase.IUploadManager, storage miniopkg.IUploadService, ctx context.Context) *pdfHttp.PDFHandler {
+	return pdfHttp.NewPDFHandler(uploadManager, storage, ctx)
 }
 
 // ===== Submission & Grading Services =====
@@ -363,9 +370,15 @@ func provideOutboxRelayTask(database *db.Database, kafkaClient kafka.IKafka) *cr
 	return cronjob.NewOutboxRelayTask(database, kafkaClient)
 }
 
+func providePDFRecoveryTask(repo pdfRepository.IPDFRepository) *cronjob.PDFRecoveryTask {
+	// Timeout set to 10 minutes
+	return cronjob.NewPDFRecoveryTask(repo, 10*time.Minute)
+}
+
 func provideCronjobScheduler(
 	examTimerUseCase examUsecase.IExamTimerUseCase,
 	outboxRelay *cronjob.OutboxRelayTask,
+	pdfRecovery *cronjob.PDFRecoveryTask,
 ) *cronjob.Scheduler {
 	scheduler := cronjob.NewScheduler()
 	// Register exam timer task to run every 1 minute (as requested)
@@ -375,6 +388,10 @@ func provideCronjobScheduler(
 	)
 	// Register outbox relay task to run every 5 seconds
 	scheduler.Register(outboxRelay, 5*time.Second)
+
+	// Register PDF recovery task to run every 10 minutes
+	scheduler.Register(pdfRecovery, 10*time.Minute)
+
 	return scheduler
 }
 

@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -265,6 +266,7 @@ type Querier interface {
 	RemoveExamFromClass(ctx context.Context, arg RemoveExamFromClassParams) error
 	RemoveParticipant(ctx context.Context, arg RemoveParticipantParams) error
 	RemoveProblemFromExam(ctx context.Context, arg RemoveProblemFromExamParams) error
+	ResetStuckPDFUploads(ctx context.Context, updatedAt pgtype.Timestamptz) error
 	RevokeAllResourcePermissionGrants(ctx context.Context, arg RevokeAllResourcePermissionGrantsParams) error
 	RevokeAllUserTokens(ctx context.Context, userID int64) error
 	RevokePermissionFromRole(ctx context.Context, arg RevokePermissionFromRoleParams) error

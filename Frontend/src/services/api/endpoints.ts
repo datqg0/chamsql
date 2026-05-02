@@ -33,10 +33,13 @@ export const API_ENDPOINTS = {
     admin: {
         stats: '/admin/stats',
         users: '/admin/users',
-        importUsers: '/admin/users/import',
+        importUsers: '/admin/users/batch-import',
         updateRole: (id: number) => `/admin/users/${id}/role`,
         toggleActive: (id: number) => `/admin/users/${id}/active`,
         deleteUser: (id: number) => `/admin/users/${id}`,
+        dashboard: '/admin/dashboard',
+        timeline: '/admin/timeline',
+        auditLog: '/admin/audit-log',
         sandboxStatus: '/admin/sandbox/status',
         sandboxTest: '/admin/sandbox/test',
     },
@@ -56,6 +59,8 @@ export const API_ENDPOINTS = {
     },
     student: {
         results: '/student/results',
+        ranking: (examId: number) => `/student/exams/${examId}/ranking`,
+        analytics: (examId: number) => `/student/exams/${examId}/analytics`,
     },
     health: '/health',
 } as const

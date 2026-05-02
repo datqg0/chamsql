@@ -17,7 +17,10 @@ import (
 )
 
 func main() {
-	container, err := di.NewContainer()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	container, err := di.NewContainer(ctx)
 	if err != nil {
 		logger.Fatal("Failed to create DI container: ", err)
 	}
@@ -31,8 +34,6 @@ func main() {
 		scheduler *cronjob.Scheduler,
 	) {
 		logger.Info("Starting Exam & Submission Backend...")
-
-		ctx, cancel := context.WithCancel(context.Background())
 
 		// Ensure Kafka topics exist if Kafka is enabled
 		if kafkaClient != nil {

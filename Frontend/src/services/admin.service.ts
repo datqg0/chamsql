@@ -54,4 +54,97 @@ export const adminService = {
     async deleteUser(userId: number): Promise<void> {
         await api.delete(API_ENDPOINTS.admin.deleteUser(userId))
     },
+
+    async getDashboard(): Promise<DashboardResponse> {
+        const { data } = await api.get<DashboardResponse>(API_ENDPOINTS.admin.dashboard)
+        return data
+    },
+
+    async getPerformanceTimeline(userId: number, problemId?: number): Promise<PerformanceTimelineResponse> {
+        const { data } = await api.get<PerformanceTimelineResponse>(API_ENDPOINTS.admin.timeline, {
+            params: { userId, problemId }
+        })
+        return data
+    },
+
+    async getAuditLog(page = 1, pageSize = 20): Promise<AuditLogResponse> {
+        const { data } = await api.get<AuditLogResponse>(API_ENDPOINTS.admin.auditLog, {
+            params: { page, pageSize }
+        })
+        return data
+    },
+}
+
+export interface DashboardResponse {
+    overview: {
+        totalUsers: number
+        totalProblems: number
+        totalSubmissions: number
+        activeUsersWeek: number
+        avgSolveTimeMs: number
+        usersByRole: Record<string, number>
+    }
+    gradingStats: {
+        totalSubmissions: number
+        avgGradingTimeMs: number
+        minGradingTimeMs: number
+        maxGradingTimeMs: number
+        totalCorrect: number
+        totalUsers: number
+        totalProblemsAttempted: number
+        passRate: number
+    }
+    dailySubmissions: {
+        date: string
+        totalSubmissions: number
+        correctCount: number
+        avgExecutionMs: number
+    }[]
+    passRates: {
+        id: number
+        title: string
+        difficulty: string
+        totalSubmissions: number
+        correctCount: number
+        passRate: number
+    }[]
+    topProblems: {
+        id: number
+        title: string
+        slug: string
+        difficulty: string
+        submissionCount: number
+        uniqueUsers: number
+    }[]
+}
+
+export interface PerformanceTimelineResponse {
+    userId: number
+    problemId?: number
+    timeline: {
+        date: string
+        avgTimeMs: number
+        bestTimeMs: number
+        submissionCount: number
+        correctCount: number
+    }[]
+}
+
+export interface AuditLogResponse {
+    logs: {
+        id: number
+        action: string
+        userId?: number
+        resourceType?: string
+        resourceId?: number
+        oldValue?: string
+        newValue?: string
+        reason?: string
+        ipAddress?: string
+        userAgent?: string
+        createdAt: string
+    }[]
+    total: number
+    page: number
+    pageSize: number
 }

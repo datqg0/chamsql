@@ -25,7 +25,7 @@ func NewAdminHandler(uc usecase.IAdminUseCase) *AdminHandler {
 // @Produce     json
 // @Param       request body dto.ImportUsersRequest true "Users to import"
 // @Success     200 {object} dto.ImportResult
-// @Router      /admin/users/import [post]
+// @Router      /admin/users/batch-import [post]
 func (h *AdminHandler) ImportUsers(c *gin.Context) {
 	var req dto.ImportUsersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -171,6 +171,28 @@ func (h *AdminHandler) ToggleUserActive(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"message": "User status updated"})
+}
+
+// DeleteUser godoc
+// @Summary     Delete user (soft delete)
+// @Tags        Admin
+// @Produce     json
+// @Param       id path int true "User ID"
+// @Success     200 {object} response.Response
+// @Router      /admin/users/{id} [delete]
+func (h *AdminHandler) DeleteUser(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	err = h.usecase.DeleteUser(c.Request.Context(), id)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"message": "User deleted successfully"})
 }
 
 // ListRoles godoc

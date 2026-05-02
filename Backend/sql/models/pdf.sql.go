@@ -646,6 +646,21 @@ func (q *Queries) GetTestCaseTemplatesByProblem(ctx context.Context, problemID *
 	return items, nil
 }
 
+const resetStuckPDFUploads = `-- name: ResetStuckPDFUploads :exec
+UPDATE pdf_uploads
+SET 
+    status = 'failed',
+    error_message = 'Processing timed out or server restarted',
+    updated_at = NOW()
+WHERE status IN ('uploading', 'parsing', 'generating')
+AND updated_at < $1
+`
+
+func (q *Queries) ResetStuckPDFUploads(ctx context.Context, updatedAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, resetStuckPDFUploads, updatedAt)
+	return err
+}
+
 const updateAIGeneratedContentApproval = `-- name: UpdateAIGeneratedContentApproval :one
 UPDATE ai_generated_content
 SET 

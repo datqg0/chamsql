@@ -1,4 +1,4 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 
 export const api = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1',
@@ -56,8 +56,9 @@ api.interceptors.response.use(
                 // Call refresh endpoint
                 const { data } = await api.post('/auth/refresh')
 
-                if (data.success) {
-                    const { accessToken, user } = data.data
+                // Sau khi unwrap tại response interceptor, data chính là { accessToken, user }
+                if (data?.accessToken) {
+                    const { accessToken, user } = data
 
                     // Update auth store
                     const { setAuth } = await import('@/stores/use-auth-store').then((m) =>

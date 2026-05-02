@@ -40,6 +40,15 @@ SET
 WHERE id = $1
 RETURNING *;
 
+-- name: ResetStuckPDFUploads :exec
+UPDATE pdf_uploads
+SET 
+    status = 'failed',
+    error_message = 'Processing timed out or server restarted',
+    updated_at = NOW()
+WHERE status IN ('uploading', 'parsing', 'generating')
+AND updated_at < $1;
+
 -- AI Generated Content Queries
 
 -- name: CreateAIGeneratedContent :one

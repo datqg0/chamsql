@@ -56,8 +56,8 @@ export const examsService = {
         return Array.isArray(data) ? data : []
     },
 
-    // Upload file for exam import (PDF, Excel, Doc)
-    async importExamFile(file: File): Promise<{ success: boolean; examId?: number; message?: string }> {
+    // Upload file for exam import (PDF)
+    async importExamFile(file: File): Promise<{ success: boolean; uploadId?: number; message?: string }> {
         const formData = new FormData()
         formData.append('file', file)
 
@@ -73,7 +73,39 @@ export const examsService = {
 
         return {
             success: Boolean(data?.id),
+            uploadId: data?.id,
             message: data?.message,
         }
     },
+
+    async getExamRankings(examId: number): Promise<ClassRankingResponse> {
+        const { data } = await api.get<ClassRankingResponse>(API_ENDPOINTS.student.ranking(examId))
+        return data
+    },
+
+    async getExamAnalytics(examId: number): Promise<ExamAnalytics> {
+        const { data } = await api.get<ExamAnalytics>(API_ENDPOINTS.student.analytics(examId))
+        return data
+    },
+}
+
+export interface ClassRankingResponse {
+    exam_id: number
+    exam_title: string
+    rankings: {
+        rank: number
+        student_id: number
+        student_code: string
+        student_name: string
+        score: number
+        percentile: number
+    }[]
+    total: number
+    page: number
+    limit: number
+}
+
+export interface ExamAnalytics {
+    examId: number
+    message: string
 }
