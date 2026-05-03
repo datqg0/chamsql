@@ -64,7 +64,7 @@ type ViewSubmissionResponse struct {
 	StudentID       int64       `json:"studentId"`
 	StudentName     string      `json:"studentName"`
 	StudentEmail    string      `json:"studentEmail"`
-	Code            string      `json:"code"`
+	SubmittedCode   string      `json:"submittedCode"`
 	Status          string      `json:"status"`
 	ScoringMode     string      `json:"scoringMode"`
 	Score           float64     `json:"score"`

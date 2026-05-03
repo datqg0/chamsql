@@ -49,19 +49,21 @@ export const problemsService = {
     },
 
     async run(problemId: number, request: RunQueryRequest): Promise<RunQueryResponse> {
-        const { data } = await api.post<RunQueryResponse>(
+        const response = await api.post<any>(
             API_ENDPOINTS.problems.run(problemId),
             request
         )
-        return data
+        const d = response.data
+        return d?.data || d
     },
 
     async submit(problemId: number, request: SubmitSolutionRequest): Promise<SubmitSolutionResponse> {
-        const { data } = await api.post<SubmitSolutionResponse>(
+        const response = await api.post<any>(
             API_ENDPOINTS.problems.submit(problemId),
             request
         )
-        return data
+        const d = response.data
+        return d?.data || d
     },
     async update(id: number, problem: Partial<Problem>): Promise<Problem> {
         const { data } = await api.put<Problem>(API_ENDPOINTS.problems.update(id), problem)

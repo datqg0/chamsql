@@ -110,7 +110,8 @@ func (gu *gradingUseCase) ViewSubmissionForGrading(ctx context.Context, submissi
                 u.full_name, u.email,
                 p.title,
                 es.code, COALESCE(es.score, 0), COALESCE(es.is_correct, false),
-                COALESCE(es.feedback, ''), es.submitted_at, es.graded_at, es.graded_by
+                COALESCE(es.feedback, ''), es.submitted_at, es.graded_at, es.graded_by,
+                es.execution_time_ms, es.actual_output, es.expected_output, es.status
          FROM exam_submissions es
 		 JOIN exam_problems ep ON ep.id = es.exam_problem_id
          JOIN users u ON u.id = es.user_id
@@ -121,8 +122,9 @@ func (gu *gradingUseCase) ViewSubmissionForGrading(ctx context.Context, submissi
         &resp.SubmissionID, &resp.ExamID, &resp.StudentID, &resp.ProblemID,
         &resp.StudentName, &resp.StudentEmail,
         &resp.ProblemTitle,
-        &resp.Code, &resp.Score, &resp.IsCorrect,
-        &resp.Feedback, &submittedAt, &gradedAt, &gradedBy)
+        &resp.SubmittedCode, &resp.Score, &resp.IsCorrect,
+        &resp.Feedback, &submittedAt, &gradedAt, &gradedBy,
+        &resp.ExecutionTimeMs, &resp.ActualOutput, &resp.ExpectedOutput, &resp.Status)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get submission details: %w", err)
@@ -436,7 +438,8 @@ func (gu *gradingUseCase) AutoScoreSubmission(ctx context.Context, submissionID 
 func (gu *gradingUseCase) buildSubmissionGradingResponse(ctx context.Context, submissionID, lecturerID int64) (*dto.SubmissionGradingResponse, error) {
 	row := gu.db.GetPool().QueryRow(ctx,
 		`SELECT es.id, es.user_id, u.full_name, p.title, es.score, ep.points,
-		        es.is_correct, ep.scoring_mode, es.graded_by, es.graded_at, es.submitted_at
+		        es.is_correct, ep.scoring_mode, es.graded_by, es.graded_at, es.submitted_at,
+		        es.execution_time_ms
 		 FROM exam_submissions es
 		 JOIN exam_problems ep ON ep.id = es.exam_problem_id
 		 JOIN problems p ON p.id = ep.problem_id
@@ -451,7 +454,7 @@ func (gu *gradingUseCase) buildSubmissionGradingResponse(ctx context.Context, su
 	var submittedAt time.Time
 	err := row.Scan(&resp.SubmissionID, &resp.StudentID, &resp.StudentName, &resp.ProblemTitle,
 		&resp.Score, &resp.MaxPoints, &resp.IsCorrect, &resp.ScoringMode,
-		&gradedBy, &gradedAt, &submittedAt)
+		&gradedBy, &gradedAt, &submittedAt, &resp.ExecutionTimeMs)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to build response: %w", err)

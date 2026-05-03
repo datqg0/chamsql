@@ -525,6 +525,46 @@ function GradingPage() {
                                 </div>
                             )}
 
+                            {/* Outputs */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Kết quả thực tế</label>
+                                    <div className="max-h-[250px] overflow-auto border rounded-lg bg-background p-2">
+                                        {selectedSubmission.actualOutput ? (
+                                            typeof selectedSubmission.actualOutput === 'string' ? (
+                                                <pre className="text-xs font-mono p-2">{selectedSubmission.actualOutput}</pre>
+                                            ) : (
+                                                <div className="text-xs font-mono p-2">
+                                                    <pre>{JSON.stringify(selectedSubmission.actualOutput, null, 2)}</pre>
+                                                </div>
+                                            )
+                                        ) : (
+                                            <div className="text-center py-8 text-muted-foreground italic text-xs">
+                                                Không có dữ liệu thực tế
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Kết quả mong đợi</label>
+                                    <div className="max-h-[250px] overflow-auto border rounded-lg bg-background p-2">
+                                        {selectedSubmission.expectedOutput ? (
+                                            typeof selectedSubmission.expectedOutput === 'string' ? (
+                                                <pre className="text-xs font-mono p-2">{selectedSubmission.expectedOutput}</pre>
+                                            ) : (
+                                                <div className="text-xs font-mono p-2">
+                                                    <pre>{JSON.stringify(selectedSubmission.expectedOutput, null, 2)}</pre>
+                                                </div>
+                                            )
+                                        ) : (
+                                            <div className="text-center py-8 text-muted-foreground italic text-xs">
+                                                Không có dữ liệu mong đợi
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Grading Form */}
                             <div>
                                 <label className="text-sm font-medium">
