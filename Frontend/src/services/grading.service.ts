@@ -61,7 +61,7 @@ export const gradingService = {
         if (filters?.status) params.append('status', filters.status)
         if (filters?.studentCode) params.append('student_code', filters.studentCode)
 
-        const response = await api.get(`/submissions?${params.toString()}`)
+        const response = await api.get(`/lecturer/submissions?${params.toString()}`)
         return response.data?.submissions || []
     },
 }

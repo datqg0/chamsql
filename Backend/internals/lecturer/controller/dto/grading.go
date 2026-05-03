@@ -128,3 +128,9 @@ type ExamResultsResponse struct {
 	Participants []ExamParticipantResult `json:"participants"`
 }
 
+
+// ListSubmissionsResponse - Response for listing submissions with filters
+type ListSubmissionsResponse struct {
+	Submissions []SubmissionGradingResponse `json:"submissions"`
+	Total       int64                       `json:"total"`
+}

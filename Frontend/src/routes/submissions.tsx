@@ -298,9 +298,14 @@ function SubmissionsPage() {
             )
             if (problemID > 0) {
                 const { problemsService } = await import('@/services/problems.service')
+                const dbType = selectedExam.exam.allowedDatabases?.[0] || 'postgresql'
+                const normalizedDbType = dbType === 'pg' ? 'postgresql' 
+                                       : dbType === 'mssql' ? 'sqlserver' 
+                                       : dbType || 'postgresql'
+
                 const response = await problemsService.run(problemID, {
                     code: sqlQuery,
-                    databaseType: selectedExam.exam.allowedDatabases?.[0] || 'postgresql',
+                    databaseType: normalizedDbType,
                 })
                 setResult(response)
             }
@@ -512,7 +517,7 @@ function SubmissionsPage() {
                                             problemIndex={currentProblemIndex + 1}
                                             totalProblems={examProblems.length}
                                             points={currentProblem?.points || 0}
-                                            submissionResult={solvedProblems[currentProblem?.id]}
+                                            submissionResult={solvedProblems[getExamProblemKey(currentProblem)]}
                                             onPrevious={() => handleProblemSelect(Math.max(0, currentProblemIndex - 1))}
                                             onNext={() => handleProblemSelect(Math.min(examProblems.length - 1, currentProblemIndex + 1))}
                                             canGoBack={currentProblemIndex > 0}
@@ -559,14 +564,34 @@ function SubmissionsPage() {
                                             )}
 
                                             {result && (
-                                                <div className="p-3 bg-muted rounded text-sm">
-                                                    <p className="font-medium mb-2">Kết quả:</p>
+                                                <div className="p-3 bg-muted rounded text-sm space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="font-medium text-xs">Kết quả thử nghiệm:</p>
+                                                        {result.executionMs !== undefined && (
+                                                            <span className="text-[10px] font-mono bg-background border px-1.5 py-0.5 rounded text-muted-foreground flex items-center gap-1">
+                                                                <Clock className="h-3 w-3" />
+                                                                {result.executionMs}ms
+                                                            </span>
+                                                        )}
+                                                    </div>
+
                                                     {result.success ? (
-                                                        <pre className="text-xs overflow-x-auto">
-                                                            {JSON.stringify(result.data, null, 2)}
-                                                        </pre>
+                                                        <>
+                                                            <pre className="text-[10px] overflow-x-auto bg-background p-2 rounded border max-h-48 font-mono">
+                                                                {JSON.stringify(
+                                                                    { 
+                                                                        columns: result.columns, 
+                                                                        rows: result.rows 
+                                                                    }, 
+                                                                    null, 2
+                                                                )}
+                                                            </pre>
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                {result.rowCount} dòng trả về
+                                                            </p>
+                                                        </>
                                                     ) : (
-                                                        <p className="text-red-500">{result.error}</p>
+                                                        <p className="text-red-500 text-xs">{result.error}</p>
                                                     )}
                                                 </div>
                                             )}
@@ -635,7 +660,7 @@ function SubmissionsPage() {
                                     problemIndex={currentProblemIndex + 1}
                                     totalProblems={examProblems.length}
                                     points={currentProblem?.points || 0}
-                                    submissionResult={solvedProblems[currentProblem?.id]}
+                                    submissionResult={solvedProblems[getExamProblemKey(currentProblem)]}
                                     onPrevious={() => handleProblemSelect(Math.max(0, currentProblemIndex - 1))}
                                     onNext={() => handleProblemSelect(Math.min(examProblems.length - 1, currentProblemIndex + 1))}
                                     canGoBack={currentProblemIndex > 0}
@@ -769,7 +794,7 @@ function SubmissionsPage() {
                         ) : (
                             <div className="space-y-3">
                                 {examProblems.map((problem, index) => {
-                                    const submission = solvedProblems[problem.id]
+                                    const submission = solvedProblems[getExamProblemKey(problem)]
                                     return submission ? (
                                         <ProblemResultDetail
                                             key={problem.id}
@@ -947,10 +972,10 @@ function SubmissionsPage() {
                                                                     Nộp lúc: {formatDate(sub.createdAt)}
                                                                 </span>
                                                             )}
-                                                            {sub.executionTime !== undefined && (
-                                                                <span className="flex items-center gap-1 text-muted-foreground font-medium">
-                                                                    <Clock className="h-4 w-4" />
-                                                                    {sub.executionTime}ms
+                                                            {sub.executionTimeMs !== undefined && (
+                                                                <span className="flex items-center gap-1 text-muted-foreground font-mono text-xs">
+                                                                    <Clock className="h-3 w-3" />
+                                                                    {sub.executionTimeMs}ms
                                                                 </span>
                                                             )}
                                                         </div>

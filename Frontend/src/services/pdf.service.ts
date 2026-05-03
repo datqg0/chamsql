@@ -45,7 +45,8 @@ export const pdfService = {
      */
     async getExtractedProblems(uploadId: number): Promise<ExtractedProblem[]> {
         const response = await api.get(API_ENDPOINTS.pdf.problems(uploadId))
-        return response.data.problems || []
+        // Backend wraps with response.Success -> data.data.problems
+        return response.data?.data?.problems || response.data?.problems || []
     },
 
     /**

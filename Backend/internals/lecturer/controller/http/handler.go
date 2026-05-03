@@ -646,3 +646,42 @@ func (h *LecturerHandler) GetExamResults(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// ListSubmissions - List submissions with filters
+// @Summary List submissions
+// @Description Get submissions with optional exam_id and status filters
+// @Tags Grading
+// @Produce json
+// @Param exam_id query int64 false "Exam ID"
+// @Param status query string false "Status filter"
+// @Success 200 {object} dto.ListSubmissionsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Router /lecturer/submissions [get]
+func (h *LecturerHandler) ListSubmissions(c *gin.Context) {
+	lecturerID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	lecturerIDInt, _ := lecturerID.(int64)
+
+	var examID *int64
+	if e := c.Query("exam_id"); e != "" {
+		if val, err := strconv.ParseInt(e, 10, 64); err == nil {
+			examID = &val
+		}
+	}
+
+	var status *string
+	if s := c.Query("status"); s != "" {
+		status = &s
+	}
+
+	response, err := h.gradingUseCase.ListSubmissions(c.Request.Context(), lecturerIDInt, examID, status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}

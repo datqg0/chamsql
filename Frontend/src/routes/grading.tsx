@@ -3,20 +3,20 @@ import {
     FileText,
     Clock,
     CheckCircle2,
-    XCircle,
-    AlertTriangle,
-    Search,
-    Filter,
-    Eye,
-    Wand2,
-    Loader2,
-    User,
-    Calendar,
-    Code,
-    BarChart3,
+    TrendingUp,
 } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    Cell,
+} from 'recharts'
 
 import { MainLayout } from '@/components/layouts/main-layout'
 import { Badge } from '@/components/ui/badge'
@@ -110,6 +110,25 @@ function GradingPage() {
             setIsLoading(false)
         }
     }, [selectedExamId, filterStatus, searchQuery])
+
+    const executionTimeDistribution = (() => {
+        const buckets = [
+            { range: '0-50ms', min: 0, max: 50, count: 0, color: '#22c55e', label: 'Rất nhanh' },
+            { range: '51-200ms', min: 51, max: 200, count: 0, color: '#3b82f6', label: 'Nhanh' },
+            { range: '201-500ms', min: 201, max: 500, count: 0, color: '#eab308', label: 'Trung bình' },
+            { range: '>500ms', min: 501, max: Infinity, count: 0, color: '#ef4444', label: 'Chậm' },
+        ]
+
+        submissions.forEach((sub) => {
+            if (sub.executionTimeMs !== undefined) {
+                const time = sub.executionTimeMs
+                const bucket = buckets.find((b) => time >= b.min && time <= b.max)
+                if (bucket) bucket.count++
+            }
+        })
+
+        return buckets
+    })()
 
     // Load exams on mount
     useEffect(() => {
@@ -211,63 +230,105 @@ function GradingPage() {
                     <p className="text-muted-foreground">Xem và chấm điểm các bài nộp của sinh viên</p>
                 </div>
 
-                {/* Statistics */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <Card>
-                        <CardContent className="pt-4">
-                            <div className="flex items-center gap-2">
-                                <FileText className="h-5 w-5 text-primary" />
-                                <div>
-                                    <p className="text-2xl font-bold">{stats.totalSubmissions}</p>
-                                    <p className="text-xs text-muted-foreground">Tổng bài nộp</p>
-                                </div>
+                {/* Statistics & Analytics */}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    {/* Performance Distribution Chart */}
+                    <Card className="lg:col-span-1 border-primary/10 shadow-sm">
+                        <CardHeader className="pb-2 pt-4">
+                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4 text-primary" />
+                                Phân phối Hiệu năng
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                            <div className="h-[180px] w-full mt-2">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={executionTimeDistribution}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                                        <XAxis 
+                                            dataKey="range" 
+                                            fontSize={10} 
+                                            tickLine={false} 
+                                            axisLine={false} 
+                                            tick={{ fill: '#6b7280' }}
+                                        />
+                                        <YAxis 
+                                            fontSize={10} 
+                                            tickLine={false} 
+                                            axisLine={false} 
+                                            allowDecimals={false}
+                                            tick={{ fill: '#6b7280' }}
+                                        />
+                                        <Tooltip 
+                                            contentStyle={{ fontSize: '12px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                                        />
+                                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                            {executionTimeDistribution.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
                             </div>
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardContent className="pt-4">
-                            <div className="flex items-center gap-2">
-                                <Clock className="h-5 w-5 text-yellow-500" />
-                                <div>
-                                    <p className="text-2xl font-bold">{stats.pendingCount}</p>
-                                    <p className="text-xs text-muted-foreground">Chờ chấm</p>
+
+                    {/* Statistics Cards */}
+                    <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <Card className="bg-primary/5 border-primary/10">
+                            <CardContent className="pt-6">
+                                <div className="flex flex-col items-center text-center gap-2">
+                                    <div className="p-2 bg-primary/10 rounded-full">
+                                        <FileText className="h-5 w-5 text-primary" />
+                                    </div>
+                                    <div>
+                                        <p className="text-2xl font-bold">{stats.totalSubmissions}</p>
+                                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Tổng bài nộp</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-4">
-                            <div className="flex items-center gap-2">
-                                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                                <div>
-                                    <p className="text-2xl font-bold">{stats.gradedCount}</p>
-                                    <p className="text-xs text-muted-foreground">Đã chấm</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-yellow-500/5 border-yellow-500/10">
+                            <CardContent className="pt-6">
+                                <div className="flex flex-col items-center text-center gap-2">
+                                    <div className="p-2 bg-yellow-500/10 rounded-full">
+                                        <Clock className="h-5 w-5 text-yellow-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-2xl font-bold text-yellow-600">{stats.pendingCount}</p>
+                                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Chờ chấm</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-4">
-                            <div className="flex items-center gap-2">
-                                <AlertTriangle className="h-5 w-5 text-red-500" />
-                                <div>
-                                    <p className="text-2xl font-bold">{stats.errorCount}</p>
-                                    <p className="text-xs text-muted-foreground">Lỗi</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-green-500/5 border-green-500/10">
+                            <CardContent className="pt-6">
+                                <div className="flex flex-col items-center text-center gap-2">
+                                    <div className="p-2 bg-green-500/10 rounded-full">
+                                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-2xl font-bold text-green-600">{stats.gradedCount}</p>
+                                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Đã chấm</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-4">
-                            <div className="flex items-center gap-2">
-                                <BarChart3 className="h-5 w-5 text-blue-500" />
-                                <div>
-                                    <p className="text-2xl font-bold">{stats.averageScore}</p>
-                                    <p className="text-xs text-muted-foreground">Điểm TB</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-blue-500/5 border-blue-500/10">
+                            <CardContent className="pt-6">
+                                <div className="flex flex-col items-center text-center gap-2">
+                                    <div className="p-2 bg-blue-500/10 rounded-full">
+                                        <TrendingUp className="h-5 w-5 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-2xl font-bold text-blue-600">{stats.averageScore.toFixed(1)}</p>
+                                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Điểm trung bình</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
 
                 {/* Filters */}

@@ -33,6 +33,9 @@ type IGradingUseCase interface {
 
 	// GetExamResults trả về kết quả của toàn bộ sinh viên trong một kỳ thi
 	GetExamResults(ctx context.Context, examID int64) (*dto.ExamResultsResponse, error)
+
+	// ListSubmissions lists submissions with filters
+	ListSubmissions(ctx context.Context, lecturerID int64, examID *int64, status *string) (*dto.ListSubmissionsResponse, error)
 }
 
 type gradingUseCase struct {
@@ -533,5 +536,70 @@ func (gu *gradingUseCase) GetExamResults(ctx context.Context, examID int64) (*dt
 		SubmittedCount: submittedCount,
 		AverageScore:   avgScore,
 		Participants:   participants,
+	}, nil
+}
+func (gu *gradingUseCase) ListSubmissions(ctx context.Context, lecturerID int64, examID *int64, status *string) (*dto.ListSubmissionsResponse, error) {
+	query := `
+		SELECT 
+			es.id, es.user_id, u.full_name, p.title, es.score, ep.points, 
+			es.is_correct, ep.scoring_mode, es.graded_by, es.graded_at, es.submitted_at,
+			es.execution_time_ms
+		FROM exam_submissions es
+		JOIN exam_problems ep ON ep.id = es.exam_problem_id
+		JOIN problems p ON p.id = ep.problem_id
+		JOIN users u ON u.id = es.user_id
+		JOIN exams e ON e.id = es.exam_id
+		WHERE e.created_by = $1
+	`
+	args := []interface{}{lecturerID}
+	argID := 2
+
+	if examID != nil {
+		query += fmt.Sprintf(" AND es.exam_id = $%d", argID)
+		args = append(args, *examID)
+		argID++
+	}
+	if status != nil {
+		query += fmt.Sprintf(" AND es.status = $%d", argID)
+		args = append(args, *status)
+		argID++
+	}
+
+	query += " ORDER BY es.submitted_at DESC"
+
+	rows, err := gu.db.GetPool().Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list submissions: %w", err)
+	}
+	defer rows.Close()
+
+	submissions := make([]dto.SubmissionGradingResponse, 0)
+	for rows.Next() {
+		var resp dto.SubmissionGradingResponse
+		var gradedBy *int64
+		var gradedAt *time.Time
+		var submittedAt time.Time
+
+		if err := rows.Scan(
+			&resp.SubmissionID, &resp.StudentID, &resp.StudentName, &resp.ProblemTitle,
+			&resp.Score, &resp.MaxPoints, &resp.IsCorrect, &resp.ScoringMode,
+			&gradedBy, &gradedAt, &submittedAt, &resp.ExecutionTimeMs,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan submission: %w", err)
+		}
+
+		resp.SubmittedAt = submittedAt.Format(time.RFC3339)
+		if gradedAt != nil {
+			s := gradedAt.Format(time.RFC3339)
+			resp.GradedAt = &s
+		}
+		resp.GradedBy = gradedBy
+		
+		submissions = append(submissions, resp)
+	}
+
+	return &dto.ListSubmissionsResponse{
+		Submissions: submissions,
+		Total:       int64(len(submissions)),
 	}, nil
 }

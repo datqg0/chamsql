@@ -36,7 +36,7 @@ const mapExamResultToSubmission = (item: ExamResultItem): SubmissionListResponse
     status: (item.status || 'accepted') as SubmissionListResponse['data'][number]['status'],
     isCorrect: Number(item.total_score ?? item.totalScore ?? 0) > 0,
     score: Number(item.total_score ?? item.totalScore ?? 0),
-    executionTime: item.execution_time_ms ?? item.executionTimeMs,
+    executionTimeMs: item.execution_time_ms ?? item.executionTimeMs,
     submittedAt: item.submitted_at ?? item.submittedAt ?? '',
     createdAt: item.submitted_at ?? item.submittedAt ?? '',
 })

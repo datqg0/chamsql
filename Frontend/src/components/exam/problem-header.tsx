@@ -122,9 +122,16 @@ export const ProblemHeader: React.FC<ProblemHeaderProps> = ({
               <p className="text-sm">You earned {submissionResult.score} points</p>
             )}
           </div>
-          <span className="text-xs text-muted-foreground">
-            Attempt {submissionResult.attemptNumber}
-          </span>
+          <div className="text-right space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Attempt {submissionResult.attemptNumber}
+            </p>
+            {submissionResult.executionTimeMs !== undefined && (
+              <p className="text-xs font-mono font-medium">
+                ⏱ {submissionResult.executionTimeMs}ms
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

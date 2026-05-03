@@ -79,7 +79,7 @@ export interface Submission {
     databaseType: string
     status: 'pending' | 'accepted' | 'wrong_answer' | 'error' | 'timeout'
     isCorrect: boolean
-    executionTime?: number
+    executionTimeMs?: number
     score?: number
     totalTests?: number
     passedTests?: number

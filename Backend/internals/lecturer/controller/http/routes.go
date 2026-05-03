@@ -60,6 +60,9 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		// POST /lecturer/submissions/:submissionId/grade - Grade a submission
 		lecturer.POST("/submissions/:submissionId/grade", handler.GradeSubmission)
 
+		// GET /lecturer/submissions - List submissions with filters (exam_id, status)
+		lecturer.GET("/submissions", handler.ListSubmissions)
+
 		// GET /lecturer/exams/:examId/ungraded - List ungraded submissions for exam
 		lecturer.GET("/exams/:examId/ungraded", handler.ListUngradedSubmissions)
 
