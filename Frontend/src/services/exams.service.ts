@@ -17,12 +17,12 @@ interface PdfUploadResponse {
 
 export const examsService = {
     async list(): Promise<Exam[]> {
-        const { data } = await api.get<{ exams: Exam[] } | Exam[]>(API_ENDPOINTS.exams.list)
+        const { data } = await api.get<any>(API_ENDPOINTS.exams.list)
         
         if (Array.isArray(data)) {
             return data
         }
-        if (data && 'exams' in data && Array.isArray(data.exams)) {
+        if (data && data.exams && Array.isArray(data.exams)) {
             return data.exams
         }
         return []
@@ -33,8 +33,8 @@ export const examsService = {
         return data
     },
 
-    async getById(examId: number): Promise<Exam> {
-        const { data } = await api.get<Exam>(API_ENDPOINTS.exams.byId(examId))
+    async getById(id: number): Promise<Exam> {
+        const { data } = await api.get<Exam>(API_ENDPOINTS.exams.getById(id))
         return data
     },
 

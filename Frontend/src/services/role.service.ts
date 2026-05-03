@@ -11,7 +11,7 @@ export const roleService = {
      * Get all system roles
      */
     getRoles: async (): Promise<RoleDTO[]> => {
-        const { data } = await api.get<{ data: RoleDTO[] }>('/admin/roles')
-        return data.data
+        const { data } = await api.get<RoleDTO[]>('/admin/roles')
+        return data
     },
 }

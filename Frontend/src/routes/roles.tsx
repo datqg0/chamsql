@@ -62,7 +62,7 @@ function RolesPage() {
                 {roles && (
                     <div className="grid gap-4 md:grid-cols-3">
                         {roles.map((role) => {
-                            const display = ROLE_DISPLAY[role.id] || ROLE_DISPLAY.student
+                            const display = ROLE_DISPLAY[role.name.toLowerCase()] || ROLE_DISPLAY.student
                             const Icon = display.icon
                             return (
                                 <Card key={role.id} className="hover:shadow-lg transition-shadow">

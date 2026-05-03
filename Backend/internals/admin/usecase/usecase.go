@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"backend/db"
@@ -172,23 +173,30 @@ func (u *adminUseCase) GetSystemStats(ctx context.Context) (*dto.SystemStatsResp
 }
 
 func (u *adminUseCase) ListRoles(ctx context.Context) ([]dto.RoleResponse, error) {
-	return []dto.RoleResponse{
-		{
-			ID:          "student",
-			Name:        "Student",
-			Description: "Sinh viên - Có thể làm bài tập, tham gia kỳ thi",
-		},
-		{
-			ID:          "lecturer",
-			Name:        "Lecturer",
-			Description: "Giảng viên - Tạo bài tập, tạo kỳ thi, chấm điểm",
-		},
-		{
-			ID:          "admin",
-			Name:        "Admin",
-			Description: "Quản trị viên - Full quyền quản lý hệ thống",
-		},
-	}, nil
+	roles, err := u.queries.ListRoles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch roles: %w", err)
+	}
+
+	result := make([]dto.RoleResponse, 0, len(roles))
+	for _, role := range roles {
+		result = append(result, dto.RoleResponse{
+			ID:          strconv.Itoa(int(role.ID)),
+			Name:        role.Name,
+			Description: ptrToStr(role.Description),
+		})
+	}
+
+	// Fallback to legacy roles if table is empty (unlikely with seed data)
+	if len(result) == 0 {
+		return []dto.RoleResponse{
+			{ID: "student", Name: "Student", Description: "Sinh viên"},
+			{ID: "lecturer", Name: "Lecturer", Description: "Giảng viên"},
+			{ID: "admin", Name: "Admin", Description: "Quản trị viên"},
+		}, nil
+	}
+
+	return result, nil
 }
 
 func (u *adminUseCase) ListUsers(ctx context.Context, page, pageSize int) (*dto.UserListResponse, error) {

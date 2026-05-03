@@ -5,17 +5,18 @@ import { API_ENDPOINTS } from './api/endpoints'
 
 export const topicsService = {
     async list(): Promise<Topic[]> {
-        const { data } = await api.get(API_ENDPOINTS.topics.list)
-        // Handle API response structure: { code, message, data: { topics: [], total } }
+        const { data } = await api.get<{ topics: Topic[]; total: number }>(API_ENDPOINTS.topics.list)
+        
+        // Handle unwrapped API response: { topics: [], total }
+        if (data && Array.isArray(data.topics)) {
+            return data.topics
+        }
+        
+        // Fallback for direct array or other structures
         if (Array.isArray(data)) {
             return data
         }
-        if (data && data.data && Array.isArray(data.data.topics)) {
-            return data.data.topics
-        }
-        if (data && Array.isArray(data.data)) {
-            return data.data
-        }
+        
         return []
     },
 

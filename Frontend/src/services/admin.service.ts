@@ -8,7 +8,7 @@ import { api } from './api/client'
 import { API_ENDPOINTS } from './api/endpoints'
 
 export interface UserListResponse {
-    data: User[]
+    users: User[]
     page: number
     pageSize: number
     total: number

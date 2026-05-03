@@ -170,18 +170,6 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
         }
     }
 
-    useEffect(() => {
-        const subscription = form.watch((_, { name }) => {
-            if (name === 'topicId') {
-                const currentTitle = form.getValues('title')
-                if (currentTitle) {
-                    handleTitleChange(currentTitle)
-                }
-            }
-        })
-        return () => subscription.unsubscribe()
-    }, [form, topics, handleTitleChange])
-
     const handleTitleChange = useCallback((title: string) => {
         const selectedTopicId = form.getValues('topicId')
         const selectedTopic = topics.find(t => t.id === selectedTopicId)
@@ -200,6 +188,18 @@ export function CreateProblemDialog({ onSuccess, problem }: CreateProblemDialogP
 
         form.setValue('slug', slug)
     }, [form, topics])
+
+    useEffect(() => {
+        const subscription = form.watch((_, { name }) => {
+            if (name === 'topicId') {
+                const currentTitle = form.getValues('title')
+                if (currentTitle) {
+                    handleTitleChange(currentTitle)
+                }
+            }
+        })
+        return () => subscription.unsubscribe()
+    }, [form, topics, handleTitleChange])
 
     const databases = ['postgresql', 'mysql', 'sqlite']
 

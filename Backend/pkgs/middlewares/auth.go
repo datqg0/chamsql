@@ -48,6 +48,7 @@ func AuthMiddleware(jwtProv jwt.JWTProvider, cache redis.IRedis) gin.HandlerFunc
 		// 3. Set User Claims to Context
 		if userID, ok := (*claims)["user_id"].(float64); ok {
 			c.Set("userID", int64(userID))
+			c.Set("user_id", int64(userID)) // Add snake_case for compatibility
 		}
 		if role, ok := (*claims)["role"].(string); ok {
 			c.Set("role", role)

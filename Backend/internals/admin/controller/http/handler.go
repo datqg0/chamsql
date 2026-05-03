@@ -220,12 +220,12 @@ func (h *AdminHandler) ListRoles(c *gin.Context) {
 // @Tags        Admin
 // @Accept      json
 // @Produce     json
-// @Param       userId path int true "User ID"
+// @Param       id path int true "User ID"
 // @Param       request body dto.GrantRoleRequest true "Role to grant"
 // @Success     200 {object} response.Response
-// @Router      /admin/users/{userId}/roles [post]
+// @Router      /admin/users/{id}/roles [post]
 func (h *AdminHandler) GrantRoleToUser(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
 		return
@@ -251,12 +251,12 @@ func (h *AdminHandler) GrantRoleToUser(c *gin.Context) {
 // @Tags        Admin
 // @Accept      json
 // @Produce     json
-// @Param       userId path int true "User ID"
+// @Param       id path int true "User ID"
 // @Param       request body dto.RevokeRoleRequest true "Role to revoke"
 // @Success     200 {object} response.Response
-// @Router      /admin/users/{userId}/roles [delete]
+// @Router      /admin/users/{id}/roles [delete]
 func (h *AdminHandler) RevokeRoleFromUser(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
 		return
@@ -280,11 +280,11 @@ func (h *AdminHandler) RevokeRoleFromUser(c *gin.Context) {
 // @Summary     Get all roles for a user
 // @Tags        Admin
 // @Produce     json
-// @Param       userId path int true "User ID"
+// @Param       id path int true "User ID"
 // @Success     200 {object} dto.UserRoleResponse
-// @Router      /admin/users/{userId}/roles [get]
+// @Router      /admin/users/{id}/roles [get]
 func (h *AdminHandler) GetUserRoles(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
 		return

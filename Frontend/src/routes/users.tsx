@@ -93,9 +93,9 @@ function UsersPage() {
                     <CardContent>
                         {isLoading && <p>Đang tải...</p>}
                         {error && <p className="text-destructive">Có lỗi xảy ra</p>}
-                        {data && data.data && data.data.users && (
+                        {data && data.users && (
                             <div className="overflow-x-auto">
-                                {data.data.users.length === 0 ? (
+                                {data.users.length === 0 ? (
                                     <p className="text-center py-8 text-muted-foreground">
                                         Không tìm thấy người dùng nào
                                     </p>
@@ -115,7 +115,7 @@ function UsersPage() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {data.data.users.map((user: User, index: number) => (
+                                            {data.users.map((user: User, index: number) => (
                                                 <tr
                                                     key={user.id}
                                                     className="border-b hover:bg-muted/50 transition-colors"
@@ -197,7 +197,7 @@ function UsersPage() {
                                 )}
                             </div>
                         )}
-                        {data && (!data.data || !data.data.users) && (
+                        {data && !data.users && (
                             <p className="text-center py-8 text-muted-foreground">
                                 Dữ liệu không hợp lệ
                             </p>

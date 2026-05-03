@@ -9,14 +9,10 @@ export interface UserListParams {
 }
 
 export interface UserListResponse {
-    code: number
-    message: string
-    data: {
-        users: User[]
-        total: number
-        page: number
-        pageSize: number
-    }
+    users: User[]
+    total: number
+    page: number
+    pageSize: number
 }
 
 export interface ImportUserDto {

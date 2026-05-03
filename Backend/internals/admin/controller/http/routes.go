@@ -46,9 +46,9 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		// USER ROLE ASSIGNMENT ENDPOINTS
 		// Assign/revoke roles to/from users
 		// =============================================
-		admin.POST("/users/:userId/roles", handler.GrantRoleToUser)
-		admin.DELETE("/users/:userId/roles", handler.RevokeRoleFromUser)
-		admin.GET("/users/:userId/roles", handler.GetUserRoles)
+		admin.POST("/users/:id/roles", handler.GrantRoleToUser)
+		admin.DELETE("/users/:id/roles", handler.RevokeRoleFromUser)
+		admin.GET("/users/:id/roles", handler.GetUserRoles)
 
 		// =============================================
 		// PERMISSION MANAGEMENT ENDPOINTS

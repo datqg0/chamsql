@@ -10,12 +10,17 @@ export interface GradingStats {
 }
 
 export interface GradingSubmission {
+  id: number
   submissionId: number
   studentId: number
   studentName: string
+  studentCode?: string
+  problemId: number
   problemTitle: string
   score: number
-  maxPoints: number
+  maxScore: number
+  status: 'pending' | 'graded' | 'error'
+  executionTimeMs?: number
   isCorrect: boolean
   scoringMode: string
   gradedBy: number | null
@@ -24,6 +29,8 @@ export interface GradingSubmission {
   feedback: string
   comparisonLog: string
   submittedAt: string
+  submittedCode: string
+  errorMessage?: string
   studentAnswer: string | null
   referenceAnswer: string | null
 }
