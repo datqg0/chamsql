@@ -940,11 +940,17 @@ function SubmissionsPage() {
                                                             <span className="flex items-center gap-1 text-green-600 font-medium">
                                                                 <Trophy className="h-4 w-4" />
                                                                 Điểm: {sub.score}
-                                                            </span>
+                                                             </span>
                                                             {sub.createdAt && (
                                                                 <span className="flex items-center gap-1 text-muted-foreground">
                                                                     <Clock className="h-4 w-4" />
                                                                     Nộp lúc: {formatDate(sub.createdAt)}
+                                                                </span>
+                                                            )}
+                                                            {sub.executionTime !== undefined && (
+                                                                <span className="flex items-center gap-1 text-muted-foreground font-medium">
+                                                                    <Clock className="h-4 w-4" />
+                                                                    {sub.executionTime}ms
                                                                 </span>
                                                             )}
                                                         </div>

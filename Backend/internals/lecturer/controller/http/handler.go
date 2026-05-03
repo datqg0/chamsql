@@ -1,9 +1,9 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"backend/internals/lecturer/controller/dto"
 	"backend/internals/lecturer/usecase"
@@ -198,7 +198,7 @@ func (h *LecturerHandler) DeleteClass(c *gin.Context) {
 
 	err = h.classUseCase.DeleteClass(c.Request.Context(), classID, lectureIDInt)
 	if err != nil {
-		if errors.Is(err, errors.New("only class creator can delete")) {
+		if strings.Contains(err.Error(), "only class creator can delete") {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 			return
 		}
@@ -241,7 +241,7 @@ func (h *LecturerHandler) AddClassMember(c *gin.Context) {
 
 	response, err := h.classUseCase.AddClassMember(c.Request.Context(), classID, req.UserID, req.Role)
 	if err != nil {
-		if errors.Is(err, errors.New("user already in class")) {
+		if strings.Contains(err.Error(), "user already in class") || strings.Contains(err.Error(), "already a member") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -359,7 +359,7 @@ func (h *LecturerHandler) AssignExamToClass(c *gin.Context) {
 
 	err = h.classUseCase.AssignExamToClass(c.Request.Context(), classID, req.ExamID)
 	if err != nil {
-		if errors.Is(err, errors.New("exam already assigned to class")) {
+		if strings.Contains(err.Error(), "exam already assigned to class") || strings.Contains(err.Error(), "duplicate key") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -469,7 +469,7 @@ func (h *LecturerHandler) GradeSubmission(c *gin.Context) {
 
 	response, err := h.gradingUseCase.GradeSubmission(c.Request.Context(), submissionID, lecturerIDInt, &req)
 	if err != nil {
-		if errors.Is(err, errors.New("not found")) {
+		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -507,7 +507,7 @@ func (h *LecturerHandler) ViewSubmissionForGrading(c *gin.Context) {
 
 	response, err := h.gradingUseCase.ViewSubmissionForGrading(c.Request.Context(), submissionID, lecturerIDInt)
 	if err != nil {
-		if errors.Is(err, errors.New("not found")) {
+		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

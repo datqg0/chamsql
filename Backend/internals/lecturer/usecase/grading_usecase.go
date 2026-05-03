@@ -167,7 +167,8 @@ func (gu *gradingUseCase) ListUngradedSubmissions(ctx context.Context, examID, l
 			COALESCE(ep.points, 10),
 			COALESCE(es.is_correct, false),
 			es.status,
-			es.submitted_at
+			es.submitted_at,
+			es.execution_time_ms
 		FROM exam_submissions es
 		JOIN exam_problems ep ON ep.id = es.exam_problem_id
 		JOIN problems p ON p.id = ep.problem_id
@@ -192,6 +193,7 @@ func (gu *gradingUseCase) ListUngradedSubmissions(ctx context.Context, examID, l
 			isCorrect   bool
 			status      string
 			submittedAt time.Time
+			executionTimeMs *int32
 		)
 
 		if err := rows.Scan(
@@ -204,22 +206,24 @@ func (gu *gradingUseCase) ListUngradedSubmissions(ctx context.Context, examID, l
 			&isCorrect,
 			&status,
 			&submittedAt,
+			&executionTimeMs,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan exam submission: %w", err)
 		}
 
 		result = append(result, dto.SubmissionGradingResponse{
-			SubmissionID:  submissionID,
-			StudentID:     studentID,
-			StudentName:   studentName,
-			ProblemTitle:  problemTitle,
-			Score:         score,
-			MaxPoints:     maxPoints,
-			IsCorrect:     isCorrect,
-			ScoringMode:   "automatic",
-			Feedback:      "",
-			ComparisonLog: "",
-			SubmittedAt:   submittedAt.Format(time.RFC3339),
+			SubmissionID:    submissionID,
+			StudentID:       studentID,
+			StudentName:     studentName,
+			ProblemTitle:    problemTitle,
+			Score:           score,
+			MaxPoints:       maxPoints,
+			IsCorrect:       isCorrect,
+			ScoringMode:     "automatic",
+			Feedback:        "",
+			ComparisonLog:   "",
+			SubmittedAt:     submittedAt.Format(time.RFC3339),
+			ExecutionTimeMs: executionTimeMs,
 		})
 
 		_ = status
@@ -441,16 +445,19 @@ func (gu *gradingUseCase) buildSubmissionGradingResponse(ctx context.Context, su
 	var gradedBy *int64
 	var gradedAt *time.Time
 
+	var submittedAt time.Time
 	err := row.Scan(&resp.SubmissionID, &resp.StudentID, &resp.StudentName, &resp.ProblemTitle,
 		&resp.Score, &resp.MaxPoints, &resp.IsCorrect, &resp.ScoringMode,
-		&gradedBy, &gradedAt, &resp.SubmittedAt)
+		&gradedBy, &gradedAt, &submittedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to build response: %w", err)
 	}
 
+	resp.SubmittedAt = submittedAt.Format(time.RFC3339)
+
 	if gradedAt != nil {
-		formattedTime := gradedAt.String()
+		formattedTime := gradedAt.Format(time.RFC3339)
 		resp.GradedAt = &formattedTime
 	}
 	if gradedBy != nil {

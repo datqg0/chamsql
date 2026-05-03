@@ -20,7 +20,7 @@ var (
 
 type IProblemUseCase interface {
 	Create(ctx context.Context, userID int64, req *dto.CreateProblemRequest) (*dto.ProblemResponse, error)
-	GetBySlug(ctx context.Context, slug string, userID *int64) (*dto.ProblemResponse, error)
+	GetBySlug(ctx context.Context, slug string, userID *int64, role string) (*dto.ProblemResponse, error)
 	List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
 	Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
 	Delete(ctx context.Context, userID int64, id int64) error
@@ -92,7 +92,9 @@ func (u *problemUseCase) Create(ctx context.Context, userID int64, req *dto.Crea
 	return toProblemResponse(problem, testCases), nil
 }
 
-func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int64) (*dto.ProblemResponse, error) {
+func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int64, role string) (*dto.ProblemResponse, error) {
+	var response *dto.ProblemResponse
+
 	if userID != nil {
 		// Get with user progress
 		problem, err := u.repo.GetWithUserProgress(ctx, slug, *userID)
@@ -101,32 +103,46 @@ func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int
 		}
 
 		testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
+		response = toProblemWithProgressResponse(problem, testCases)
+	} else {
+		// Try to get from cache first (cache public problems)
+		cacheKey := "problem:" + slug
+		if u.cache != nil {
+			var cached dto.ProblemResponse
+			if err := u.cache.Get(cacheKey, &cached); err == nil {
+				response = &cached
+			}
+		}
 
-		return toProblemWithProgressResponse(problem, testCases), nil
-	}
+		if response == nil {
+			problem, err := u.repo.GetBySlug(ctx, slug)
+			if err != nil {
+				return nil, ErrProblemNotFound
+			}
 
-	// Try to get from cache first (cache public problems)
-	cacheKey := "problem:" + slug
-	if u.cache != nil {
-		var cached dto.ProblemResponse
-		if err := u.cache.Get(cacheKey, &cached); err == nil {
-			return &cached, nil
+			// Get test cases
+			testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
+			response = toProblemResponse(problem, testCases)
+
+			// Cache for 24 hours
+			if u.cache != nil && (problem.IsPublic == nil || *problem.IsPublic) {
+				u.cache.SetWithExpiration(cacheKey, response, 24*time.Hour)
+			}
 		}
 	}
 
-	problem, err := u.repo.GetBySlug(ctx, slug)
-	if err != nil {
-		return nil, ErrProblemNotFound
-	}
-
-	// Get test cases
-	testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
-
-	response := toProblemResponse(problem, testCases)
-
-	// Cache for 24 hours
-	if u.cache != nil && (problem.IsPublic == nil || *problem.IsPublic) {
-		u.cache.SetWithExpiration(cacheKey, response, 24*time.Hour)
+	// Filter sensitive fields for students
+	if role != "admin" && role != "lecturer" {
+		response.SolutionQuery = ""
+		// Filter test cases - only show non-hidden ones to students
+		publicTestCases := make([]dto.TestCaseResponse, 0)
+		for _, tc := range response.TestCases {
+			if !tc.IsHidden {
+				tc.SolutionQuery = "" // Clear anyway
+				publicTestCases = append(publicTestCases, tc)
+			}
+		}
+		response.TestCases = publicTestCases
 	}
 
 	return response, nil
@@ -309,12 +325,24 @@ func (u *problemUseCase) List(ctx context.Context, role string, query *dto.Probl
 		}
 	}
 
-	return &dto.ProblemListResponse{
+	res := &dto.ProblemListResponse{
 		Problems: problems,
 		Total:    total,
 		Page:     query.Page,
 		PageSize: query.PageSize,
-	}, nil
+	}
+
+	// Filter sensitive fields for students in List
+	if !isAdmin {
+		if problemList, ok := res.Problems.([]dto.ProblemResponse); ok {
+			for i := range problemList {
+				problemList[i].SolutionQuery = ""
+				// List doesn't usually include full test cases, but if it did, we'd clear them too
+			}
+		}
+	}
+
+	return res, nil
 }
 
 func (u *problemUseCase) Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error) {

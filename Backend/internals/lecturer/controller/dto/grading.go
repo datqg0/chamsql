@@ -29,6 +29,7 @@ type SubmissionGradingResponse struct {
 	Feedback        string  `json:"feedback"`
 	ComparisonLog   string  `json:"comparisonLog"`
 	SubmittedAt     string  `json:"submittedAt"`
+	ExecutionTimeMs *int32  `json:"executionTimeMs,omitempty"`
 	StudentAnswer   *string `json:"studentAnswer,omitempty"`
 	ReferenceAnswer *string `json:"referenceAnswer,omitempty"`
 }

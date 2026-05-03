@@ -24,6 +24,7 @@ type ExamSubmissionResult struct {
 	ProblemSlug  string  `json:"problemSlug"`
 	Score        float64 `json:"score"`
 	IsCorrect    bool    `json:"isCorrect"`
+	ExecutionTimeMs *int32  `json:"executionTimeMs,omitempty"`
 	SubmittedAt  string  `json:"submittedAt"`
 }
 

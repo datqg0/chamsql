@@ -662,7 +662,7 @@ func (u *examUseCase) FinishExam(ctx context.Context, userID int64, examID int64
 		return nil, ErrExamNotFound
 	}
 
-	participant, err := u.examRepo.GetParticipant(ctx, examID, userID)
+	_, err = u.examRepo.GetParticipant(ctx, examID, userID)
 	if err != nil {
 		return nil, ErrNotParticipant
 	}
@@ -673,6 +673,10 @@ func (u *examUseCase) FinishExam(ctx context.Context, userID int64, examID int64
 		return nil, err
 	}
 
+	// Calculate and update final score
+	totalScore, _ := u.examRepo.CalcParticipantTotalScore(ctx, examID, userID)
+	_ = u.examRepo.UpdateScore(ctx, examID, userID, totalScore)
+
 	// Publish exam.finished event
 	eventEnvelope := domain.NewExamEventEnvelope(
 		domain.EventTypeExamFinished,
@@ -682,7 +686,7 @@ func (u *examUseCase) FinishExam(ctx context.Context, userID int64, examID int64
 			UserID: userID,
 			Title:  exam.Title,
 			Status: "submitted",
-			Score:  numericToFloat(participant.TotalScore),
+			Score:  totalScore,
 		},
 		"", // correlation ID can be empty for new events
 	)
@@ -696,7 +700,7 @@ func (u *examUseCase) FinishExam(ctx context.Context, userID int64, examID int64
 	return &dto.ExamResultResponse{
 		ExamID:     examID,
 		Title:      exam.Title,
-		TotalScore: numericToFloat(participant.TotalScore),
+		TotalScore: totalScore,
 		Status:     "submitted",
 	}, nil
 }

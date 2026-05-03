@@ -15,7 +15,7 @@ import {
     Code,
     BarChart3,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 
 import { MainLayout } from '@/components/layouts/main-layout'
@@ -357,6 +357,12 @@ function GradingPage() {
                                                     <Calendar className="h-3 w-3" />
                                                     {formatDate(submission.submittedAt)}
                                                 </span>
+                                                {submission.executionTimeMs !== undefined && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" />
+                                                        {submission.executionTimeMs}ms
+                                                    </span>
+                                                )}
                                                 {submission.score !== undefined && (
                                                     <span className="font-medium text-foreground">
                                                         {submission.score}/{submission.maxScore} điểm

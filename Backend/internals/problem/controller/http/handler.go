@@ -78,7 +78,12 @@ func (h *ProblemHandler) GetBySlug(c *gin.Context) {
 		userID = &id
 	}
 
-	result, err := h.usecase.GetBySlug(c.Request.Context(), slug, userID)
+	role := ""
+	if r, ok := middlewares.GetUserRole(c); ok {
+		role = r
+	}
+
+	result, err := h.usecase.GetBySlug(c.Request.Context(), slug, userID, role)
 	if err != nil {
 		if err == usecase.ErrProblemNotFound {
 			response.NotFound(c, "Problem not found")
@@ -243,7 +248,12 @@ func (h *ProblemHandler) DownloadProblemPDF(c *gin.Context) {
 		userID = &id
 	}
 
-	problem, err := h.usecase.GetBySlug(c.Request.Context(), slug, userID)
+	role := ""
+	if r, ok := middlewares.GetUserRole(c); ok {
+		role = r
+	}
+
+	problem, err := h.usecase.GetBySlug(c.Request.Context(), slug, userID, role)
 	if err != nil {
 		response.NotFound(c, "Problem not found")
 		return

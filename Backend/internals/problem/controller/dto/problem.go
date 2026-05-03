@@ -51,7 +51,7 @@ type ProblemResponse struct {
 	TopicName          string             `json:"topicName,omitempty"`
 	TopicSlug          string             `json:"topicSlug,omitempty"`
 	InitScript         string             `json:"initScript,omitempty"`
-	SolutionQuery      string             `json:"solutionQuery,omitempty"`
+	SolutionQuery      string             `json:"solutionQuery,omitempty"` // For internal/admin use
 	SupportedDatabases []string           `json:"supportedDatabases"`
 	OrderMatters       bool               `json:"orderMatters"`
 	Hints              json.RawMessage    `json:"hints,omitempty"`
@@ -67,14 +67,42 @@ type ProblemResponse struct {
 	BestTimeMs *int  `json:"bestTimeMs,omitempty"`
 }
 
+type ProblemPublicResponse struct {
+	ID                 int64              `json:"id"`
+	Title              string             `json:"title"`
+	Slug               string             `json:"slug"`
+	Description        string             `json:"description"`
+	Difficulty         string             `json:"difficulty"`
+	TopicID            *int32             `json:"topicId,omitempty"`
+	TopicName          string             `json:"topicName,omitempty"`
+	TopicSlug          string             `json:"topicSlug,omitempty"`
+	InitScript         string             `json:"initScript,omitempty"`
+	SupportedDatabases []string           `json:"supportedDatabases"`
+	OrderMatters       bool               `json:"orderMatters"`
+	Hints              json.RawMessage    `json:"hints,omitempty"`
+	SampleOutput       json.RawMessage    `json:"sampleOutput,omitempty"`
+	CreatedAt          string             `json:"createdAt,omitempty"`
+	// User progress
+	IsSolved   *bool `json:"isSolved,omitempty"`
+	Attempts   *int  `json:"attempts,omitempty"`
+	BestTimeMs *int  `json:"bestTimeMs,omitempty"`
+}
+
 type TestCaseResponse struct {
 	ID            int64  `json:"id"`
 	Name          string `json:"name"`
 	Description   string `json:"description"`
-	InitScript    string `json:"initScript"`
-	SolutionQuery string `json:"solutionQuery"`
+	InitScript    string `json:"initScript,omitempty"`
+	SolutionQuery string `json:"solutionQuery,omitempty"`
 	Weight        int32  `json:"weight"`
-	IsHidden      bool   `json:"isHidden"`
+	IsHidden      bool   `json:"isHidden,omitempty"`
+}
+
+type TestCasePublicResponse struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Weight      int32  `json:"weight"`
 }
 
 type ProblemListResponse struct {

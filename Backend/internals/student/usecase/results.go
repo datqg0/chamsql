@@ -218,7 +218,7 @@ func (su *studentResultsUseCase) GetExamResultDetail(ctx context.Context, examID
 	rows, err := su.db.GetPool().Query(ctx,
 		`SELECT es.problem_id, p.title, p.slug,
                 COALESCE(es.score, 0), es.is_correct,
-                es.submitted_at
+                es.submitted_at, es.execution_time_ms
          FROM exam_submissions es
          JOIN problems p ON p.id = es.problem_id
          WHERE es.exam_id = $1 AND es.user_id = $2
@@ -235,7 +235,7 @@ func (su *studentResultsUseCase) GetExamResultDetail(ctx context.Context, examID
 		var s dto.ExamSubmissionResult
 		var sat time.Time
 		if err := rows.Scan(&s.ProblemID, &s.ProblemTitle, &s.ProblemSlug,
-			&s.Score, &s.IsCorrect, &sat); err != nil {
+			&s.Score, &s.IsCorrect, &sat, &s.ExecutionTimeMs); err != nil {
 			continue
 		}
 		s.SubmittedAt = sat.Format(time.RFC3339)
