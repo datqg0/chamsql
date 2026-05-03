@@ -156,9 +156,12 @@ export interface ExamProblem {
     id: number
     examId: number
     problemId: number
+    title: string
+    slug: string
+    difficulty: string
+    description?: string
     points: number
     sortOrder: number
-    problem?: Problem
 }
 
 export interface CreateExamRequest {

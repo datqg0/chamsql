@@ -18,22 +18,28 @@ export interface ProblemFilters {
 
 export const problemsService = {
     async list(filters?: ProblemFilters): Promise<Problem[]> {
-        const { data } = await api.get<{ problems: Problem[]; total: number }>(
+        const response = await api.get<any>(
             API_ENDPOINTS.problems.list,
             { params: filters }
         )
-        // Handle unwrapped API response: { problems: [], total }
-        if (data && Array.isArray(data.problems)) {
-            return data.problems
-        }
-        if (Array.isArray(data)) {
-            return data
-        }
+        const d = response.data
+        
+        // Handle various response structures safely
+        if (Array.isArray(d)) return d
+        if (d && Array.isArray(d.problems)) return d.problems
+        if (d && d.data && Array.isArray(d.data.problems)) return d.data.problems
+        if (d && d.data && Array.isArray(d.data)) return d.data
+        
         return []
     },
 
     async getBySlug(slug: string): Promise<Problem> {
         const { data } = await api.get<Problem>(API_ENDPOINTS.problems.bySlug(slug))
+        return data
+    },
+
+    async getById(id: number): Promise<Problem> {
+        const { data } = await api.get<Problem>(API_ENDPOINTS.problems.byId(id))
         return data
     },
 
@@ -58,8 +64,8 @@ export const problemsService = {
         return data
     },
     async update(id: number, problem: Partial<Problem>): Promise<Problem> {
-        const { data } = await api.put<unknown>(API_ENDPOINTS.problems.update(id), problem)
-        return data.data || data
+        const { data } = await api.put<Problem>(API_ENDPOINTS.problems.update(id), problem)
+        return data
     },
     async delete(id: number): Promise<void> {
         await api.delete(API_ENDPOINTS.problems.delete(id))

@@ -22,8 +22,9 @@ type IProblemUseCase interface {
 	Create(ctx context.Context, userID int64, req *dto.CreateProblemRequest) (*dto.ProblemResponse, error)
 	GetBySlug(ctx context.Context, slug string, userID *int64, role string) (*dto.ProblemResponse, error)
 	List(ctx context.Context, role string, query *dto.ProblemListQuery) (*dto.ProblemListResponse, error)
-	Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
-	Delete(ctx context.Context, userID int64, id int64) error
+	Update(ctx context.Context, userID int64, userRole string, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error)
+	Delete(ctx context.Context, userID int64, userRole string, id int64) error
+	GetByID(ctx context.Context, id int64, userID *int64, role string) (*dto.ProblemResponse, error)
 	ListMine(ctx context.Context, creatorID int64, page, pageSize int) (*dto.ProblemListResponse, error)
 }
 
@@ -130,6 +131,32 @@ func (u *problemUseCase) GetBySlug(ctx context.Context, slug string, userID *int
 			}
 		}
 	}
+
+	// Filter sensitive fields for students
+	if role != "admin" && role != "lecturer" {
+		response.SolutionQuery = ""
+		// Filter test cases - only show non-hidden ones to students
+		publicTestCases := make([]dto.TestCaseResponse, 0)
+		for _, tc := range response.TestCases {
+			if !tc.IsHidden {
+				tc.SolutionQuery = "" // Clear anyway
+				publicTestCases = append(publicTestCases, tc)
+			}
+		}
+		response.TestCases = publicTestCases
+	}
+
+	return response, nil
+}
+
+func (u *problemUseCase) GetByID(ctx context.Context, id int64, userID *int64, role string) (*dto.ProblemResponse, error) {
+	problem, err := u.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, ErrProblemNotFound
+	}
+
+	testCases, _ := u.repo.ListTestCases(ctx, problem.ID)
+	response := toProblemResponse(problem, testCases)
 
 	// Filter sensitive fields for students
 	if role != "admin" && role != "lecturer" {
@@ -345,15 +372,15 @@ func (u *problemUseCase) List(ctx context.Context, role string, query *dto.Probl
 	return res, nil
 }
 
-func (u *problemUseCase) Update(ctx context.Context, userID int64, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error) {
+func (u *problemUseCase) Update(ctx context.Context, userID int64, userRole string, id int64, req *dto.UpdateProblemRequest) (*dto.ProblemResponse, error) {
 	// Check if problem exists
 	problem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, ErrProblemNotFound
 	}
 
-	// Check ownership
-	if problem.CreatedBy == nil || *problem.CreatedBy != userID {
+	// Check ownership (admins and lecturers can edit anything)
+	if userRole != "admin" && userRole != "lecturer" && (problem.CreatedBy == nil || *problem.CreatedBy != userID) {
 		return nil, ErrForbidden
 	}
 
@@ -432,14 +459,14 @@ func (u *problemUseCase) Update(ctx context.Context, userID int64, id int64, req
 	return toProblemResponse(finalProblem, testCases), nil
 }
 
-func (u *problemUseCase) Delete(ctx context.Context, userID int64, id int64) error {
+func (u *problemUseCase) Delete(ctx context.Context, userID int64, userRole string, id int64) error {
 	problem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return ErrProblemNotFound
 	}
 
-	// Check ownership
-	if problem.CreatedBy == nil || *problem.CreatedBy != userID {
+	// Check ownership (admins and lecturers can delete anything)
+	if userRole != "admin" && userRole != "lecturer" && (problem.CreatedBy == nil || *problem.CreatedBy != userID) {
 		return ErrForbidden
 	}
 

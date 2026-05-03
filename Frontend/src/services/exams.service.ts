@@ -17,14 +17,14 @@ interface PdfUploadResponse {
 
 export const examsService = {
     async list(): Promise<Exam[]> {
-        const { data } = await api.get<any>(API_ENDPOINTS.exams.list)
+        const response = await api.get<any>(API_ENDPOINTS.exams.list)
+        const d = response.data
         
-        if (Array.isArray(data)) {
-            return data
-        }
-        if (data && data.exams && Array.isArray(data.exams)) {
-            return data.exams
-        }
+        if (Array.isArray(d)) return d
+        if (d && Array.isArray(d.exams)) return d.exams
+        if (d && d.data && Array.isArray(d.data.exams)) return d.data.exams
+        if (d && d.data && Array.isArray(d.data)) return d.data
+        
         return []
     },
 
@@ -34,7 +34,7 @@ export const examsService = {
     },
 
     async getById(id: number): Promise<Exam> {
-        const { data } = await api.get<Exam>(API_ENDPOINTS.exams.getById(id))
+        const { data } = await api.get<Exam>(API_ENDPOINTS.exams.byId(id))
         return data
     },
 
@@ -76,6 +76,18 @@ export const examsService = {
             uploadId: data?.id,
             message: data?.message,
         }
+    },
+
+    async delete(id: number): Promise<void> {
+        await api.delete(API_ENDPOINTS.exams.byId(id))
+    },
+
+    async removeProblem(examId: number, problemId: number): Promise<void> {
+        await api.delete(API_ENDPOINTS.exams.removeProblem(examId, problemId))
+    },
+
+    async removeParticipant(examId: number, userId: number): Promise<void> {
+        await api.delete(API_ENDPOINTS.exams.removeParticipant(examId, userId))
     },
 
     async getExamRankings(examId: number): Promise<ClassRankingResponse> {

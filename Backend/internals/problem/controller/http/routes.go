@@ -12,6 +12,7 @@ func Routes(rg *gin.RouterGroup, handler *ProblemHandler, authMiddleware gin.Han
 		// Public routes
 		problems.GET("", handler.List)
 		problems.GET("/:slug", handler.GetBySlug)
+		problems.GET("/id/:id", handler.GetByID)
 		problems.GET("/:slug/pdf", handler.DownloadProblemPDF)
 
 		// Protected routes (lecturer and admin only)

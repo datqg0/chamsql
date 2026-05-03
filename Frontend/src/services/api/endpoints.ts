@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
     problems: {
         list: '/problems',
         bySlug: (slug: string) => `/problems/${slug}`,
+        byId: (id: number) => `/problems/id/${id}`,
         create: '/problems',
         update: (id: number) => `/problems/${id}`,
         delete: (id: number) => `/problems/${id}`,
@@ -28,6 +29,8 @@ export const API_ENDPOINTS = {
         addProblem: (id: number) => `/exams/${id}/problems`,
         addParticipants: (id: number) => `/exams/${id}/participants`,
         listParticipants: (id: number) => `/exams/${id}/participants`,
+        removeProblem: (id: number, problemId: number) => `/exams/${id}/problems/${problemId}`,
+        removeParticipant: (id: number, userId: number) => `/exams/${id}/participants/${userId}`,
         myExams: '/my-exams',
     },
     admin: {

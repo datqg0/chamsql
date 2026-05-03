@@ -95,6 +95,43 @@ func (h *ProblemHandler) GetBySlug(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// GetByID godoc
+// @Summary     Get problem by ID
+// @Tags        Problems
+// @Produce     json
+// @Param       id path int true "Problem ID"
+// @Success     200 {object} dto.ProblemResponse
+// @Router      /problems/id/{id} [get]
+func (h *ProblemHandler) GetByID(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid problem ID")
+		return
+	}
+
+	// Check if user is authenticated
+	var userID *int64
+	if idVal, ok := middlewares.GetUserID(c); ok {
+		userID = &idVal
+	}
+
+	role := ""
+	if r, ok := middlewares.GetUserRole(c); ok {
+		role = r
+	}
+
+	result, err := h.usecase.GetByID(c.Request.Context(), id, userID, role)
+	if err != nil {
+		if err == usecase.ErrProblemNotFound {
+			response.NotFound(c, "Problem not found")
+			return
+		}
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+
 // Create godoc
 // @Summary     Create a new problem
 // @Tags        Problems
@@ -156,7 +193,8 @@ func (h *ProblemHandler) Update(c *gin.Context) {
 		return
 	}
 
-	result, err := h.usecase.Update(c.Request.Context(), userID, id, &req)
+	userRole, _ := middlewares.GetUserRole(c)
+	result, err := h.usecase.Update(c.Request.Context(), userID, userRole, id, &req)
 	if err != nil {
 		if err == usecase.ErrProblemNotFound {
 			response.NotFound(c, "Problem not found")
@@ -192,7 +230,8 @@ func (h *ProblemHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.usecase.Delete(c.Request.Context(), userID, id)
+	userRole, _ := middlewares.GetUserRole(c)
+	err = h.usecase.Delete(c.Request.Context(), userID, userRole, id)
 	if err != nil {
 		if err == usecase.ErrProblemNotFound {
 			response.NotFound(c, "Problem not found")

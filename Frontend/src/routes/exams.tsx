@@ -9,6 +9,8 @@ import {
     Loader2,
     ArrowLeft,
     Settings,
+    Trash2,
+    Eye,
 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
@@ -17,6 +19,7 @@ import { PDFImportWizard } from '@/components/exam/pdf-import-wizard'
 import { AddParticipantsDialog } from '@/components/exams/add-participants-dialog'
 import { AddProblemsDialog } from '@/components/exams/add-problems-dialog'
 import { CreateExamDialog } from '@/components/exams/create-exam-dialog'
+import { CreateProblemDialog } from '@/components/practice/create-problem-dialog'
 import { MainLayout } from '@/components/layouts/main-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -153,15 +156,48 @@ function ExamsPage() {
                                             >
                                                 <div className="flex-1">
                                                     <p className="font-medium">
-                                                        {examProblem.problem?.title || `Problem ${examProblem.problemId}`}
+                                                        {examProblem.title}
                                                     </p>
                                                     <p className="text-sm text-muted-foreground">
                                                         {examProblem.points} điểm
                                                     </p>
                                                 </div>
-                                                <Button variant="ghost" size="sm" className="text-red-600">
-                                                    Xóa
-                                                </Button>
+                                                <div className="flex items-center gap-2">
+                                                    <CreateProblemDialog
+                                                        problem={{
+                                                            id: examProblem.problemId,
+                                                            slug: examProblem.slug,
+                                                            title: examProblem.title,
+                                                            difficulty: examProblem.difficulty as any,
+                                                            description: examProblem.description || '',
+                                                            supportedDatabases: [], // Will be loaded by dialog
+                                                            orderMatters: false,
+                                                            isPublic: true
+                                                        }}
+                                                        onSuccess={() => {
+                                                            queryClient.invalidateQueries({ queryKey: ['exam', id] })
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation()
+                                                            if (confirm('Bạn có chắc muốn xóa bài tập này khỏi kỳ thi?')) {
+                                                                try {
+                                                                    await examsService.removeProblem(examDetail.id, examProblem.problemId)
+                                                                    toast.success('Đã xóa bài tập')
+                                                                    queryClient.invalidateQueries({ queryKey: ['exam', examDetail.id] })
+                                                                } catch (error: any) {
+                                                                    toast.error(error.message || 'Xóa bài tập thất bại')
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -203,7 +239,26 @@ function ExamsPage() {
                                                     <p className="font-medium truncate">{participant.fullName || `User ${participant.userId}`}</p>
                                                     <p className="text-sm text-muted-foreground truncate">{participant.email}</p>
                                                 </div>
-                                                <span className="text-xs text-muted-foreground">{participant.status}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation()
+                                                        if (confirm('Bạn có chắc muốn xóa sinh viên này khỏi kỳ thi?')) {
+                                                            try {
+                                                                await examsService.removeParticipant(examDetail.id, participant.userId)
+                                                                toast.success('Đã xóa sinh viên')
+                                                                queryClient.invalidateQueries({ queryKey: ['exam-participants', examDetail.id] })
+                                                                queryClient.invalidateQueries({ queryKey: ['exam', examDetail.id] })
+                                                            } catch (error: any) {
+                                                                toast.error(error.message || 'Xóa sinh viên thất bại')
+                                                            }
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
                                             </div>
                                         ))}
                                     </div>
@@ -294,6 +349,39 @@ function ExamsPage() {
                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                         <FileText className="h-4 w-4" />
                                         <span>{exam.problemCount ?? exam.problems?.length ?? 0} bài tập</span>
+                                    </div>
+                                    <div className="pt-4 flex gap-2 border-t">
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            className="flex-1"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleSelectExam(exam)
+                                            }}
+                                        >
+                                            <Eye className="h-4 w-4 mr-2" />
+                                            Chi tiết
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                            onClick={async (e) => {
+                                                e.stopPropagation()
+                                                if (confirm(`Bạn có chắc muốn xóa kỳ thi "${exam.title}"? Hành động này không thể hoàn tác.`)) {
+                                                    try {
+                                                        await examsService.delete(exam.id)
+                                                        toast.success('Đã xóa kỳ thi')
+                                                        queryClient.invalidateQueries({ queryKey: ['exams'] })
+                                                    } catch (error: any) {
+                                                        toast.error(error.message || 'Xóa kỳ thi thất bại')
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
                                 </CardContent>
                             </Card>
