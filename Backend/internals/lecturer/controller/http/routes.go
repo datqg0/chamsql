@@ -63,6 +63,12 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 		// GET /lecturer/submissions - List submissions with filters (exam_id, status)
 		lecturer.GET("/submissions", handler.ListSubmissions)
 
+		// POST /lecturer/submissions/bulk-grade - Grade multiple submissions
+		lecturer.POST("/submissions/bulk-grade", handler.BulkGradeSubmissions)
+
+		// POST /lecturer/submissions/:submissionId/auto-grade - Auto-score a submission
+		lecturer.POST("/submissions/:submissionId/auto-grade", handler.AutoGradeSubmission)
+
 		// GET /lecturer/exams/:examId/ungraded - List ungraded submissions for exam
 		lecturer.GET("/exams/:examId/ungraded", handler.ListUngradedSubmissions)
 
@@ -71,8 +77,5 @@ func Routes(rg *gin.RouterGroup, database *db.Database, cache redis.IRedis, auth
 
 		// GET /lecturer/exams/:examId/results - Xem kết quả kỳ thi (điểm, rank sinh viên)
 		lecturer.GET("/exams/:examId/results", handler.GetExamResults)
-
-		// POST /lecturer/submissions/bulk-grade - Grade multiple submissions
-		lecturer.POST("/submissions/bulk-grade", handler.BulkGradeSubmissions)
 	}
 }

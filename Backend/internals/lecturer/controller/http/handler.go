@@ -621,6 +621,37 @@ func (h *LecturerHandler) BulkGradeSubmissions(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// AutoGradeSubmission - Auto-score a single submission using scoring engine
+// POST /lecturer/submissions/:submissionId/auto-grade
+func (h *LecturerHandler) AutoGradeSubmission(c *gin.Context) {
+	submissionID, err := strconv.ParseInt(c.Param("submissionId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid submission id"})
+		return
+	}
+
+	lecturerID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	lecturerIDInt, _ := lecturerID.(int64)
+	_ = lecturerIDInt // lecturerID reserved for future permission check
+
+	response, err := h.gradingUseCase.AutoScoreSubmission(c.Request.Context(), submissionID, "")
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 // GetExamResults - Xem kết quả toàn bộ sinh viên của một kỳ thi
 // @Summary Get exam results
 // @Description Trả về kết quả thi của tất cả sinh viên (điểm, rank, trạng thái nộp)

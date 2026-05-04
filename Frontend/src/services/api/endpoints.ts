@@ -59,6 +59,7 @@ export const API_ENDPOINTS = {
         viewSubmission: (submissionId: number) => `/lecturer/submissions/${submissionId}`,
         gradeSubmission: (submissionId: number) => `/lecturer/submissions/${submissionId}/grade`,
         bulkGrade: '/lecturer/submissions/bulk-grade',
+        autoGrade: (submissionId: number) => `/lecturer/submissions/${submissionId}/auto-grade`,
     },
     student: {
         results: '/student/results',

@@ -61,10 +61,12 @@ function GradingPage() {
     const [submissions, setSubmissions] = useState<Submission[]>([])
     const [stats, setStats] = useState({
         totalSubmissions: 0,
-        pendingCount: 0,
+        ungradedCount: 0,
         gradedCount: 0,
-        errorCount: 0,
+        gradingPercentage: 0,
         averageScore: 0,
+        maxScore: 0,
+        minScore: 0,
     })
     const [isLoading, setIsLoading] = useState(true)
     const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -305,7 +307,7 @@ function GradingPage() {
                                         <Clock className="h-5 w-5 text-yellow-600" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold text-yellow-600">{stats.pendingCount}</p>
+                                        <p className="text-2xl font-bold text-yellow-600">{stats.ungradedCount}</p>
                                         <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Chờ chấm</p>
                                     </div>
                                 </div>

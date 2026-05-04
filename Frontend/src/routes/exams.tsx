@@ -175,7 +175,7 @@ function ExamsPage() {
                                                             isPublic: true
                                                         }}
                                                         onSuccess={() => {
-                                                            queryClient.invalidateQueries({ queryKey: ['exam', id] })
+                                                            queryClient.invalidateQueries({ queryKey: ['exam', examDetail.id] })
                                                         }}
                                                     />
                                                     <Button

@@ -398,6 +398,11 @@ func (gu *gradingUseCase) AutoScoreSubmission(ctx context.Context, submissionID 
 		return nil, fmt.Errorf("failed to get submission for scoring: %w", err)
 	}
 
+	// Fix nil pointer check
+	if actualOutput == nil || expectedOutput == nil {
+		return nil, fmt.Errorf("submission %d has no output data, run sandbox first", submissionID)
+	}
+
 	// Build grading request
 	gradeReq := &scoring.GradingRequest{
 		SubmissionID:     id,
